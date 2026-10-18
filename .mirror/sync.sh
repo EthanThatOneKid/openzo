@@ -177,6 +177,11 @@ done
 todo="$(printf '%s\n' $todo | sed '/^$/d' | sort -V -u | tr '\n' ' ' | sed 's/ $//')"
 
 if [ -z "$todo" ]; then
+  # A version the site advertises but cannot serve is a stall, not a quiet week:
+  # the mirror would sit frozen while every run still reported success.
+  if [ -n "$target" ] && is_newer "$target" "${previous:-0.0.0}" && ! tarball_exists "$target"; then
+    die "the site advertises openzo $target but openzo-$target.tar.gz is not downloadable: the mirror cannot advance"
+  fi
   log "up to date: nothing published beyond v${previous:-none}"
   emit imported ""
   emit previous "$previous"
