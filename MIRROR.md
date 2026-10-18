@@ -1,20 +1,28 @@
-# openzo-mirror
+# openzo (unofficial mirror)
 
-A tracking mirror of the **openzo** releases, kept so upstream versions can be diffed,
-read, and followed over time. openzo itself is a self-hosted Zo Computer: an agent with a
-real shell, a persistent workspace, a terminal, and automations, for one person or a team,
-with one gVisor container per user on a VPS. It is not affiliated with Zo Computer.
+An unofficial, public tracking mirror of the **openzo** releases, kept so upstream versions
+can be read, diffed, and followed over time.
+
+**This repository is not upstream.** openzo is published by someone else, and this mirror is
+not affiliated with that project or with Zo Computer. Upstream publishes openzo as versioned
+source tarballs on a project site and has no git repository of its own, so every commit here
+is a verbatim import of one of those tarballs.
+
+openzo itself is a self-hosted Zo Computer: an agent with a real shell, a persistent
+workspace, a terminal, and automations, for one person or a team, with one gVisor container
+per user on a VPS.
 
 ## Provenance
 
-- Upstream: <https://openzo-site-failure.zocomputer.io>
-- Upstream has **no git repository**. Releases are versioned source tarballs served from
-  `https://openzo-site-failure.zocomputer.io/downloads/openzo-<version>.tar.gz`.
-- Every commit here is a verbatim import of one of those tarballs, tagged `v<version>`.
-  Nothing in the upstream tree is edited, and the mirror adds no upstream-facing files.
-- Files that belong to the mirror, not upstream, are `.mirror/`, `.github/`, and this file.
-- openzo ships no license file, so this mirror redistributes nothing. It is a private,
-  unmodified copy kept for reference. Do not make it public unless upstream adds a license.
+- Upstream site: <https://openzo-site-failure.zocomputer.io>
+- Releases: `https://openzo-site-failure.zocomputer.io/downloads/openzo-<version>.tar.gz`
+- Every commit here is a verbatim import of one tarball, tagged `v<version>`. Nothing in the
+  upstream tree is edited.
+- Files that belong to the mirror rather than upstream: `.mirror/`, `.github/`, and this file.
+- Licensing: upstream ships no license file. This mirror republishes the release tarballs
+  that upstream already serves publicly, unmodified and with no claim of rights over them.
+  A missing license means the terms are unclear, not that the code is free to reuse, so ask
+  the upstream author before building on it.
 
 ## How updates arrive
 
@@ -25,8 +33,7 @@ with one gVisor container per user on a VPS. It is not affiliated with Zo Comput
    HTTP content type.
 2. Every published version newer than the newest local tag is downloaded, verified against
    the `version` field in its `package.json`, unpacked over the tree, committed, and tagged.
-3. The commit and tag are pushed, and an issue is opened with the diffstat against the
-   previous release.
+3. The commit and tag are pushed, and an issue is opened with a per-version diffstat.
 
 Scheduled workflows on GitHub disable themselves after 60 days without repository
 activity, which the weekly commits normally prevent. If the schedule ever stops, run the
