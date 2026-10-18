@@ -1,0 +1,19 @@
+[Unit]
+Description=openzo host (self-hosted Zo control plane)
+After=network-online.target docker.service openzo-firewall.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/openzo/openzo.env
+WorkingDirectory=/opt/openzo
+ExecStart=/usr/local/bin/bun /opt/openzo/host/server.ts
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=30
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,16 @@
+# Caddy terminates TLS (automatic Let's Encrypt) and proxies to the host.
+# flush_interval -1 keeps the agent's NDJSON stream unbuffered; websockets
+# (the terminal) pass through reverse_proxy natively.
+{$OPENZO_DOMAIN} {
+	encode zstd gzip {
+		match {
+			not path /eve/*
+		}
+	}
+	reverse_proxy 127.0.0.1:{$OPENZO_PORT:8080} {
+		flush_interval -1
+		transport http {
+			read_timeout 0
+		}
+	}
+}

@@ -1,0 +1,14 @@
+[Unit]
+Description=openzo container network policy
+After=docker.service
+Requires=docker.service
+Before=openzo.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=/etc/openzo/openzo.env
+ExecStart=/opt/openzo/deploy/firewall.sh
+
+[Install]
+WantedBy=multi-user.target

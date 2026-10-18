@@ -1,0 +1,22 @@
+node_modules/
+web/node_modules/
+web/dist/
+
+# eve build output
+.eve/
+.output/
+.nitro/
+
+# runtime data (accounts, workspaces, secrets)
+data/
+
+# private local reference copy of the hosted Zo web app — never commit or ship
+zoapp/
+
+.agent/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+dist/

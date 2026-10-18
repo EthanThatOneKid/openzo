@@ -1,0 +1,12 @@
+# Minimal SearXNG config for openzo: JSON output on (the agent's web_search
+# tool reads it), rate limiter and image proxy off (only the host calls it).
+use_default_settings: true
+server:
+  secret_key: "__OPENZO_SEARXNG_SECRET__"
+  limiter: false
+  image_proxy: false
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json

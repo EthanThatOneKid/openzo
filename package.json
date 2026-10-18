@@ -1,0 +1,44 @@
+{
+  "name": "openzo",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "npm run build:agent && npm run build:web",
+    "build:agent": "eve build",
+    "build:web": "cd web && npm run build",
+    "dev:agent": "ZO_MOCK=1 eve dev --host 127.0.0.1 --port 4444",
+    "start": "bun host/server.ts",
+    "admin": "bun host/cli.ts",
+    "check": "bash tools/check.sh",
+    "postinstall": "node scripts/restore-eve-declarations.mjs"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.68",
+    "@zocomputer/agent-sdk": "github:zocomputer/agent-sdk#v0.27.0",
+    "ai": "^7.0.41",
+    "clawpdf": "0.3.0",
+    "defuddle": "^0.19.1",
+    "eve": "^0.28.0",
+    "htmlparser2": "^12.0.0",
+    "ignore": "^7.0.5",
+    "image-size": "2.0.2",
+    "linkedom": "^0.18.12",
+    "mammoth": "1.12.0",
+    "turndown": "^7.2.4",
+    "xlsx": "npm:@e965/xlsx@0.20.3",
+    "zod": "^4.4.3"
+  },
+  "overrides": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.3",
+    "@types/node": "^20",
+    "typescript": "6.0.3"
+  },
+  "version": "0.2.0",
+  "description": "Self-hosted Zo: eve agent + Zo stdlib + multi-user host with gVisor isolation"
+}
