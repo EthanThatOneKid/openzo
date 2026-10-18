@@ -30,6 +30,15 @@ emit() {
 cd "$(dirname "$0")/.."
 command -v curl >/dev/null || die "curl is required"
 command -v tar >/dev/null || die "tar is required"
+git rev-parse --git-dir >/dev/null 2>&1 || die "not a git repository: $(pwd)"
+
+# A CI runner has no git identity, and a commit without one fails after the tree
+# has already been replaced. Configure a fallback up front; a configured identity
+# (a local checkout) is left alone.
+if ! git config user.email >/dev/null 2>&1; then
+  git config user.name "openzo-mirror"
+  git config user.email "openzo-mirror@users.noreply.github.com"
+fi
 
 # --- upstream discovery ----------------------------------------------------
 
@@ -124,9 +133,14 @@ import_version() {
 
   git add -A
   stale="$(git diff --cached --name-status | wc -l)"
-  git commit -q \
+  if ! git commit -q \
     -m "Import openzo $version" \
-    -m "Verbatim upstream release source: $SITE/downloads/openzo-$version.tar.gz ($stale path(s) changed)"
+    -m "Verbatim upstream release source: $SITE/downloads/openzo-$version.tar.gz ($stale path(s) changed)"; then
+    log "commit failed for $version; restoring the working tree"
+    git reset -q --hard HEAD
+    git clean -qfd -e .mirror -e .github -e MIRROR.md
+    die "commit failed for openzo $version"
+  fi
   git tag -a "v$version" -m "openzo $version"
   log "  committed and tagged v$version ($stale path(s) changed)"
 }
