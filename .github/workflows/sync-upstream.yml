@@ -27,6 +27,9 @@ concurrency:
   group: sync-upstream
   cancel-in-progress: false
 
+env:
+  OPENZO_SITE: https://openzo-site-failure.zocomputer.io
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -53,28 +56,28 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           IMPORTED: ${{ steps.import.outputs.imported }}
           PREVIOUS: ${{ steps.import.outputs.previous }}
+          SITE: ${{ env.OPENZO_SITE }}
         run: |
           set -euo pipefail
-          last="$(printf '%s' "$IMPORTED" | tr ' ' '\n' | tail -n1)"
-          base=""
-          if [ -n "$PREVIOUS" ]; then
-            base="v$PREVIOUS"
-          else
-            base="$(git rev-parse --quiet --verify "v$last^" || true)"
-          fi
+          title="$(printf '%s' "$IMPORTED" | sed 's/ /, /g')"
           body="$(mktemp)"
           {
-            printf 'Imported from `https://openzo-site-failure.zocomputer.io/downloads/openzo-%s.tar.gz`.\n\n' "$last"
-            printf 'Tags: `%s` -> `v%s`\n\n' "${PREVIOUS:-none}" "$last"
-            printf '```\n'
-            if [ -n "$base" ]; then
-              git diff --stat "$base" "v$last" | tail -n 40
-            else
-              printf 'initial import: %s file(s)\n' "$(git ls-tree -r --name-only "v$last" | wc -l)"
-            fi
-            printf '```\n'
+            printf 'Verbatim upstream release source, from `%s/downloads/openzo-<version>.tar.gz`.\n\n' "$SITE"
+            printf 'Previous tag: `v%s`\n\n' "${PREVIOUS:-none}"
+            for v in $IMPORTED; do
+              base="$(git tag --list 'v*' | sed 's/^v//' | sort -V \
+                | awk -v target="$v" '$0 == target { print prev } { prev = $0 }')"
+              printf '### v%s\n\n' "$v"
+              printf '```\n'
+              if [ -n "$base" ]; then
+                git diff --stat "v$base" "v$v" | tail -n 30
+              else
+                printf 'initial import: %s file(s)\n' "$(git ls-tree -r --name-only "v$v" | wc -l)"
+              fi
+              printf '```\n\n'
+            done
           } > "$body"
-          gh issue create --title "openzo $last imported" --body-file "$body"
+          gh issue create --title "openzo $title imported" --body-file "$body"
 
       - name: Summarize
         if: steps.import.outputs.imported != ''
