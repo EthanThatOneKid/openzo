@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out the mirror with tags
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -100,3 +100,13 @@ jobs:
             echo
             echo "Newest published release matches \`v${PREVIOUS:-none}\`; nothing imported."
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Report a failed import
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue create \
+            --title "openzo mirror sync failed" \
+            --body "The import did not finish, so the mirror is behind. Run log: $RUN_URL"
+
