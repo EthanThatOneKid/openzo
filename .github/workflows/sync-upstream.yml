@@ -1,0 +1,102 @@
+name: Sync upstream releases
+
+# openzo has no upstream git repository. Its releases are versioned source
+# tarballs on the project site, so this workflow is what turns those releases
+# into history: weekly it resolves the newest published version and, if it is
+# newer than the newest local tag, imports it as a commit plus an annotated tag
+# (`vX.Y.Z`). The import itself lives in `.mirror/sync.sh`.
+#
+# Upstream site: https://openzo-site-failure.zocomputer.io
+
+on:
+  schedule:
+    # Mondays 15:00 UTC = 08:00 America/Los_Angeles
+    - cron: "0 15 * * 1"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to import, for example 0.4.0. Leave empty for the newest published release."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the mirror with tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Import any release newer than the newest tag
+        id: import
+        env:
+          VERSION: ${{ inputs.version }}
+        run: bash .mirror/sync.sh
+
+      - name: Push the import
+        if: steps.import.outputs.imported != ''
+        run: git push origin HEAD:main --follow-tags
+
+      - name: Open an issue describing the release
+        if: steps.import.outputs.imported != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMPORTED: ${{ steps.import.outputs.imported }}
+          PREVIOUS: ${{ steps.import.outputs.previous }}
+        run: |
+          set -euo pipefail
+          last="$(printf '%s' "$IMPORTED" | tr ' ' '\n' | tail -n1)"
+          base=""
+          if [ -n "$PREVIOUS" ]; then
+            base="v$PREVIOUS"
+          else
+            base="$(git rev-parse --quiet --verify "v$last^" || true)"
+          fi
+          body="$(mktemp)"
+          {
+            printf 'Imported from `https://openzo-site-failure.zocomputer.io/downloads/openzo-%s.tar.gz`.\n\n' "$last"
+            printf 'Tags: `%s` -> `v%s`\n\n' "${PREVIOUS:-none}" "$last"
+            printf '```\n'
+            if [ -n "$base" ]; then
+              git diff --stat "$base" "v$last" | tail -n 40
+            else
+              printf 'initial import: %s file(s)\n' "$(git ls-tree -r --name-only "v$last" | wc -l)"
+            fi
+            printf '```\n'
+          } > "$body"
+          gh issue create --title "openzo $last imported" --body-file "$body"
+
+      - name: Summarize
+        if: steps.import.outputs.imported != ''
+        env:
+          IMPORTED: ${{ steps.import.outputs.imported }}
+          PREVIOUS: ${{ steps.import.outputs.previous }}
+        run: |
+          {
+            echo "## openzo ${IMPORTED} imported"
+            echo
+            echo "Previous tag: \`${PREVIOUS:-none}\`"
+            echo
+            echo "Tags pushed: \`$(printf '%s' "$IMPORTED" | tr ' ' '\n' | sed 's/^/v/' | tr '\n' ' ')\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Summarize (already current)
+        if: steps.import.outputs.imported == ''
+        env:
+          PREVIOUS: ${{ steps.import.outputs.previous }}
+        run: |
+          {
+            echo "## Up to date"
+            echo
+            echo "Newest published release matches \`v${PREVIOUS:-none}\`; nothing imported."
+          } >> "$GITHUB_STEP_SUMMARY"
