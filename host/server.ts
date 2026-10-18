@@ -38,27 +38,19 @@ import {
 } from "./runtime";
 import { maskedSettings, mergeSettings, PRESETS, readSettings } from "./settings";
 import { FEATURES } from "./features";
+import { handleInternal, internalRoute } from "./internal";
+import { CHANNELS, startChannels, stopChannels } from "./channels";
+import "./api";
+import "./skills";
+import "./profile";
+import "./integrations";
+import { handleSite, isSiteRequest, siteWebsocket, startAllServices, stopAllServices, type SiteWs } from "./services";
+import { shutdownBrowsers } from "./browser";
+import { HttpError, body, checkOrigin, isSecure, json, match, publicUser, requireAdmin, requireUser, route, routes } from "./http";
 
 const VERSION = JSON.parse(readFileSync(join(import.meta.dir, "../package.json"), "utf8")).version ?? "0.0.0";
 
 // ------------------------------------------------------------------ helpers
-
-class HttpError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
-
-const json = (data: unknown, status = 200, headers: Record<string, string> = {}) =>
-  new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...headers } });
-
-async function body<T = any>(req: Request): Promise<T> {
-  try {
-    return (await req.json()) as T;
-  } catch {
-    throw new HttpError(400, "expected a JSON body");
-  }
-}
 
 function clientIp(req: Request, server: Bun.Server<WsData>): string {
   if (config.trustProxy) {
@@ -68,34 +60,12 @@ function clientIp(req: Request, server: Bun.Server<WsData>): string {
   return server.requestIP(req)?.address ?? "unknown";
 }
 
-function isSecure(req: Request): boolean {
-  if (config.trustProxy && req.headers.get("x-forwarded-proto") === "https") return true;
-  return new URL(req.url).protocol === "https:" || (config.publicUrl?.startsWith("https://") ?? false);
+// Issue a session: cookie for plain deployments, token in the body for the
+// header/query carriers (see auth.ts tokenFrom).
+function withSession(req: Request, user: User, body: Record<string, unknown>) {
+  const token = createSession(user, req.headers.get("user-agent"));
+  return json({ ...body, token }, 200, { "set-cookie": sessionCookie(token, isSecure(req)) });
 }
-
-// Same-origin check for state-changing requests (SameSite=Lax already blocks
-// most cross-site POSTs; this closes the rest).
-function checkOrigin(req: Request) {
-  if (req.method === "GET" || req.method === "HEAD") return;
-  const origin = req.headers.get("origin");
-  if (!origin) return;
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
-  if (new URL(origin).host !== host) throw new HttpError(403, "cross-origin request refused");
-}
-
-function requireUser(req: Request): User {
-  const u = userFrom(req);
-  if (!u) throw new HttpError(401, "sign in first");
-  return u;
-}
-
-function requireAdmin(req: Request): User {
-  const u = requireUser(req);
-  if (u.role !== "admin") throw new HttpError(403, "admins only");
-  return u;
-}
-
-const publicUser = (u: User) => ({ id: u.id, name: u.name, email: u.email, role: u.role, disabled: !!u.disabled, created: u.created, lastSeen: u.last_seen });
 
 function validPassword(p: unknown): string {
   if (typeof p !== "string" || p.length < 8) throw new HttpError(400, "password must be at least 8 characters");
@@ -196,11 +166,6 @@ function serveStatic(pathname: string): Response {
 
 // ------------------------------------------------------------------ routes
 
-type Handler = (ctx: { req: Request; url: URL; params: string[]; server: Bun.Server<WsData> }) => Promise<Response> | Response;
-const routes: { method: string; re: RegExp; fn: Handler }[] = [];
-const route = (method: string, path: string, fn: Handler) =>
-  routes.push({ method, re: new RegExp(`^${path.replace(/:[a-z]+/g, "([^/]+)")}$`), fn });
-
 route("GET", "/api/health", async () => {
   const d = await driverCheck();
   return json({ ok: d.ok, version: VERSION, driver: config.driver, detail: d.detail }, d.ok ? 200 : 503);
@@ -225,7 +190,7 @@ route("POST", "/api/setup", async ({ req }) => {
   const user = users.create(name, await hashPassword(validPassword(b.password)), "admin", b.email ?? null);
   ensureDirs(name);
   audit(user.id, "setup.admin");
-  return json({ user: publicUser(user) }, 200, { "set-cookie": sessionCookie(createSession(user, req.headers.get("user-agent")), isSecure(req)) });
+  return withSession(req, user, { user: publicUser(user) });
 });
 
 route("POST", "/api/login", async ({ req, server }) => {
@@ -239,7 +204,7 @@ route("POST", "/api/login", async ({ req, server }) => {
   }
   clearFailures(ip);
   audit(user.id, "login", { ip });
-  return json({ user: publicUser(user) }, 200, { "set-cookie": sessionCookie(createSession(user, req.headers.get("user-agent")), isSecure(req)) });
+  return withSession(req, user, { user: publicUser(user) });
 });
 
 route("POST", "/api/logout", ({ req }) => {
@@ -266,7 +231,7 @@ route("POST", "/api/signup", async ({ req }) => {
   if (inviteCode) db.query("UPDATE invites SET used_by = ? WHERE code = ?").run(user.id, inviteCode);
   ensureDirs(name);
   audit(user.id, "signup", { invite: inviteCode });
-  return json({ user: publicUser(user) }, 200, { "set-cookie": sessionCookie(createSession(user, req.headers.get("user-agent")), isSecure(req)) });
+  return withSession(req, user, { user: publicUser(user) });
 });
 
 route("GET", "/api/me", ({ req }) => json({ user: publicUser(requireUser(req)) }));
@@ -278,7 +243,7 @@ route("POST", "/api/me/password", async ({ req }) => {
   users.update(u.id, { pass: await hashPassword(validPassword(b.password)) });
   db.query("DELETE FROM sessions WHERE user_id = ?").run(u.id);
   audit(u.id, "password.change");
-  return json({ ok: true }, 200, { "set-cookie": sessionCookie(createSession(u, req.headers.get("user-agent")), isSecure(req)) });
+  return withSession(req, u, { ok: true });
 });
 
 route("GET", "/api/features", () => json({ features: FEATURES }));
@@ -454,6 +419,11 @@ function validateAutomation(b: any, partial = false) {
     out.prompt = prompt.slice(0, 20_000);
   }
   if (b.enabled !== undefined) out.enabled = b.enabled ? 1 : 0;
+  if (b.deliver !== undefined) {
+    const d = String(b.deliver ?? "");
+    if (d && d !== "auto" && !(CHANNELS as readonly string[]).includes(d)) throw new HttpError(400, "deliver: '', 'auto' or a channel id");
+    out.deliver = d;
+  }
   return out;
 }
 
@@ -463,8 +433,8 @@ route("POST", "/api/automations", async ({ req }) => {
   const u = requireUser(req);
   const v = validateAutomation(await body(req));
   const row = db
-    .query("INSERT INTO automations (user_id, name, cron, tz, prompt, enabled, created) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *")
-    .get(u.id, v.name as string, v.cron as string, v.tz as string, v.prompt as string, (v.enabled as number) ?? 1, now());
+    .query("INSERT INTO automations (user_id, name, cron, tz, prompt, enabled, deliver, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *")
+    .get(u.id, v.name as string, v.cron as string, v.tz as string, v.prompt as string, (v.enabled as number) ?? 1, (v.deliver as string) ?? "", now());
   audit(u.id, "automation.create", { name: v.name });
   return json({ automation: automationView(row) });
 });
@@ -491,6 +461,36 @@ route("POST", "/api/automations/:id/run", ({ req, params }) => {
   if (!a) throw new HttpError(404, "automation not found");
   void runAutomation(a);
   return json({ ok: true });
+});
+
+// The agent's handle on automations (Zo's create_automation / edit / delete).
+internalRoute("GET", "/automations", ({ user }) => json({ automations: automations.forUser(user.id).map(automationView) }));
+internalRoute("POST", "/automations", async ({ req, user }) => {
+  const b = await body<any>(req);
+  const action = String(b.action ?? "create");
+  if (action === "create") {
+    if (automations.forUser(user.id).length >= 50) throw new HttpError(429, "at most 50 automations");
+    const v = validateAutomation(b);
+    const row = db
+      .query("INSERT INTO automations (user_id, name, cron, tz, prompt, enabled, deliver, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *")
+      .get(user.id, v.name as string, v.cron as string, v.tz as string, v.prompt as string, (v.enabled as number) ?? 1, (v.deliver as string) ?? "", now());
+    audit(user.id, "automation.create", { name: v.name, by: "agent" });
+    return json({ automation: automationView(row) });
+  }
+  const a = automations.get(Number(b.id), user.id);
+  if (!a) throw new HttpError(404, "automation not found");
+  if (action === "delete") {
+    db.query("DELETE FROM automations WHERE id = ?").run(a.id);
+    return json({ ok: true });
+  }
+  if (action === "run") {
+    void runAutomation(a);
+    return json({ ok: true, started: true });
+  }
+  const v = validateAutomation(b, true);
+  const keys = Object.keys(v);
+  if (keys.length) db.query(`UPDATE automations SET ${keys.map((k) => `${k} = ?`).join(", ")} WHERE id = ?`).run(...(Object.values(v) as any[]), a.id);
+  return json({ automation: automationView(automations.get(a.id, user.id)) });
 });
 
 // admin
@@ -591,12 +591,14 @@ route("GET", "/api/admin/audit", ({ req }) => {
 
 // ------------------------------------------------------------------ terminal
 
-interface WsData {
+interface TermWs {
+  kind?: "terminal";
   user: User;
   proc?: ReturnType<typeof Bun.spawn>;
 }
+type WsData = TermWs | SiteWs;
 
-async function openTerminal(socket: ServerWebSocket<WsData>) {
+async function openTerminal(socket: ServerWebSocket<TermWs>) {
   const { user } = socket.data;
   if (config.driver === "gvisor") await ensureRuntime(user);
   const sh = shellCommand(user.name);
@@ -630,7 +632,15 @@ const server = Bun.serve<WsData>({
   idleTimeout: 255,
   async fetch(req, server) {
     const url = new URL(req.url);
+    if (process.env.OPENZO_DEBUG_HEADERS === "1" && url.pathname.startsWith("/api/")) {
+      const cookieNames = (req.headers.get("cookie") ?? "").split(/;\s*/).map((c) => c.split("=")[0]).filter(Boolean);
+      console.log(`[openzo:debug] ${req.method} ${url.pathname} host=${req.headers.get("host")} xfh=${req.headers.get("x-forwarded-host")} xfp=${req.headers.get("x-forwarded-proto")} origin=${req.headers.get("origin")} cookies=[${cookieNames.join(",")}] auth=${req.headers.has("authorization")} xos=${req.headers.has("x-openzo-session")}`);
+    }
     try {
+      if (isSiteRequest(req, url)) {
+        const res = await handleSite(req, url, server);
+        if (res !== null) return res as Response;
+      }
       if (url.pathname === "/api/terminal") {
         const user = requireUser(req);
         checkOrigin(req);
@@ -639,6 +649,8 @@ const server = Bun.serve<WsData>({
         if (server.upgrade(req, { data: { user } })) return undefined as unknown as Response;
         throw new HttpError(400, "websocket upgrade expected");
       }
+      if (url.pathname.startsWith("/internal/")) return await handleInternal(req);
+      if (url.pathname === "/zo/ask") url.pathname = "/api/ask";
       if (url.pathname.startsWith("/eve/")) {
         const user = requireUser(req);
         checkOrigin(req);
@@ -647,11 +659,8 @@ const server = Bun.serve<WsData>({
       }
       if (url.pathname.startsWith("/api/")) {
         checkOrigin(req);
-        for (const r of routes) {
-          if (r.method !== req.method) continue;
-          const m = r.re.exec(url.pathname);
-          if (m) return await r.fn({ req, url, params: m.slice(1), server });
-        }
+        const hit = match(routes, req.method, url.pathname);
+        if (hit) return await hit.fn({ req, url, params: hit.params, server });
         throw new HttpError(404, "no such endpoint");
       }
       return serveStatic(url.pathname);
@@ -663,12 +672,14 @@ const server = Bun.serve<WsData>({
   },
   websocket: {
     open(socket) {
-      openTerminal(socket).catch((e) => {
+      if (socket.data.kind === "site") return siteWebsocket.open(socket as ServerWebSocket<SiteWs>);
+      openTerminal(socket as ServerWebSocket<TermWs>).catch((e) => {
         socket.send(`\r\n[openzo] could not open a shell: ${String(e?.message ?? e)}\r\n`);
         socket.close(1011, "shell failed");
       });
     },
     message(socket, message) {
+      if (socket.data.kind === "site") return siteWebsocket.message(socket as ServerWebSocket<SiteWs>, message);
       const proc = socket.data.proc;
       if (!proc?.terminal) return;
       if (typeof message === "string" && message.startsWith("{")) {
@@ -682,21 +693,24 @@ const server = Bun.serve<WsData>({
       proc.terminal.write(typeof message === "string" ? message : new Uint8Array(message));
     },
     close(socket) {
+      if (socket.data.kind === "site") return siteWebsocket.close(socket as ServerWebSocket<SiteWs>);
       socket.data.proc?.kill();
     },
   },
 });
 
 // Internal listener for gVisor runtimes: bound to the openzo bridge gateway,
-// it serves exactly one thing — a read-only SearXNG proxy — so containers get
-// search without being able to reach anything else on the host.
-if (config.internalHost && config.searxngUrl) {
+// the one host port containers may reach. It serves the runtime API
+// (/internal/*, token-authenticated per user) and a read-only SearXNG proxy.
+if (config.internalHost) {
   Bun.serve({
     hostname: config.internalHost,
     port: config.internalPort,
+    maxRequestBodySize: 64 * 1024 * 1024,
     async fetch(req) {
       const url = new URL(req.url);
-      if (req.method !== "GET" || url.pathname !== "/searxng/search") return new Response("not found", { status: 404 });
+      if (url.pathname.startsWith("/internal/")) return handleInternal(req);
+      if (!config.searxngUrl || req.method !== "GET" || url.pathname !== "/searxng/search") return new Response("not found", { status: 404 });
       const upstream = new URL("/search", config.searxngUrl);
       for (const k of ["q", "format", "pageno", "language", "time_range", "categories", "safesearch"]) {
         const v = url.searchParams.get(k);
@@ -707,16 +721,22 @@ if (config.internalHost && config.searxngUrl) {
       return new Response(res.body, { status: res.status, headers: { "content-type": res.headers.get("content-type") ?? "application/json" } });
     },
   });
-  console.log(`[openzo] internal search proxy on http://${config.internalHost}:${config.internalPort}/searxng`);
+  console.log(`[openzo] internal runtime API on http://${config.internalHost}:${config.internalPort}/internal`);
 }
 
 startScheduler();
+void startAllServices();
+startChannels();
 console.log(`[openzo] v${VERSION} listening on http://${config.host}:${server.port} — driver=${config.driver}, signup=${config.signup}, data=${process.env.OPENZO_DATA ?? "./data"}`);
+if (config.driver === "gvisor" && !config.internalHost) console.warn("[openzo] WARNING: gvisor driver without OPENZO_INTERNAL_HOST — runtimes cannot reach the host, so hosting, channels, automations, integrations and browser tools will fail. Set it to the bridge gateway (deploy/openzo.env.example).");
 if (users.count() === 0) console.log("[openzo] no accounts yet — open the UI to create the admin account");
 
 for (const sig of ["SIGINT", "SIGTERM"] as const) {
   process.on(sig, async () => {
     console.log(`[openzo] ${sig}: stopping runtimes`);
+    await shutdownBrowsers().catch(() => {});
+    stopChannels();
+    await stopAllServices();
     await shutdownAll();
     process.exit(0);
   });

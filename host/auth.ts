@@ -37,7 +37,16 @@ export function sessionCookie(token: string, secure: boolean): string {
 
 export const clearCookie = `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
 
+// Three carriers, first found wins. Behind an auth proxy (Zo's private
+// services, some SSO gateways) the Cookie header can be replaced by the
+// proxy's own and Authorization can be consumed, so the web app also sends
+// the token in X-Openzo-Session, and uses ?oz_token= where it cannot set
+// headers (websocket, <a href> downloads, <img src>).
 function tokenFrom(req: Request): string | null {
+  const header = req.headers.get("x-openzo-session");
+  if (header) return header;
+  const q = new URL(req.url).searchParams.get("oz_token");
+  if (q) return q;
   const cookie = req.headers.get("cookie") ?? "";
   for (const part of cookie.split(/;\s*/)) {
     const [k, ...v] = part.split("=");

@@ -46,7 +46,7 @@ export async function startConversation(user: User, message: string, source: str
 const BOUNDARY = new Set(["session.waiting", "session.completed", "session.failed"]);
 
 // Read a session's durable events from `startIndex` to the tail and stop.
-export async function readEvents(user: User, sessionId: string, opts: { startIndex?: number; follow?: boolean; timeoutMs?: number } = {}) {
+export async function readEvents(user: User, sessionId: string, opts: { startIndex?: number; follow?: boolean; timeoutMs?: number; awaitTurn?: boolean } = {}) {
   const url = await ensureRuntime(user);
   const qs = new URLSearchParams({ includeTailIndex: "1" });
   if (opts.startIndex) qs.set("startIndex", String(opts.startIndex));
@@ -65,6 +65,7 @@ export async function readEvents(user: User, sessionId: string, opts: { startInd
     const dec = new TextDecoder();
     let buf = "";
     let index = opts.startIndex ?? 0;
+    let sawTurn = false;
     outer: for (;;) {
       if (!opts.follow && tail !== undefined && index >= tail) break;
       const { value, done } = await reader.read();
@@ -78,7 +79,10 @@ export async function readEvents(user: User, sessionId: string, opts: { startInd
         const ev = JSON.parse(line);
         events.push(ev);
         index++;
-        if (opts.follow && BOUNDARY.has(ev.type)) break outer;
+        if (ev.type === "turn.started") sawTurn = true;
+        // A continued session's log can end on the previous turn's boundary;
+        // only a boundary after a turn has started ends a follow.
+        if (opts.follow && BOUNDARY.has(ev.type) && (sawTurn || !opts.awaitTurn)) break outer;
         if (!opts.follow && tail !== undefined && index >= tail) break outer;
       }
     }
@@ -98,4 +102,80 @@ export function continuationFrom(events: any[]): string | undefined {
     if (typeof t === "string") return t;
   }
   return undefined;
+}
+
+// Current end of a session's event log (to follow only what comes next).
+export async function tailIndex(user: User, sessionId: string): Promise<number> {
+  const url = await ensureRuntime(user);
+  const ctrl = new AbortController();
+  const res = await fetch(`${url}/eve/v1/session/${encodeURIComponent(sessionId)}/stream?includeTailIndex=1`, { headers: agentHeaders(user), signal: ctrl.signal });
+  const tail = [...res.headers.entries()].find(([k]) => k.toLowerCase().includes("tail"))?.[1];
+  ctrl.abort();
+  res.body?.cancel().catch(() => {});
+  if (!res.ok || tail === undefined) throw new Error(`session ${sessionId} not found`);
+  return Number(tail);
+}
+
+export function finalText(events: any[]): string {
+  const parts: string[] = [];
+  let sinceLastTurn: string[] = [];
+  for (const e of events) {
+    if (e.type === "turn.started") sinceLastTurn = [];
+    if (e.type === "message.completed" && typeof e.data?.message === "string" && e.data.message.trim()) sinceLastTurn.push(e.data.message.trim());
+  }
+  parts.push(...sinceLastTurn);
+  return parts.join("\n\n");
+}
+
+export function structuredOutput(events: any[]): unknown {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const d = events[i]?.data;
+    if (d && typeof d === "object" && "output" in d && d.output !== undefined) return d.output;
+  }
+  return undefined;
+}
+
+// One complete turn: start a conversation (sessionId null) or continue one,
+// and wait for the agent to finish. Used by channels, the ask API and
+// automations.
+export async function runTurn(
+  user: User,
+  opts: { sessionId?: string | null; continuation?: string | null; message: unknown; source: string; title?: string; outputSchema?: unknown; timeoutMs?: number },
+): Promise<{ sessionId: string; continuation?: string; text: string; output?: unknown; failed: boolean; events: any[] }> {
+  const url = await ensureRuntime(user);
+  let sessionId = opts.sessionId ?? null;
+  let startIndex = 0;
+  let continuation = opts.continuation ?? undefined;
+  if (sessionId && continuation) {
+    startIndex = await tailIndex(user, sessionId);
+    const res = await fetch(`${url}/eve/v1/session/${encodeURIComponent(sessionId)}`, {
+      method: "POST",
+      headers: agentHeaders(user),
+      body: JSON.stringify({ message: opts.message, continuationToken: continuation, ...(opts.outputSchema ? { outputSchema: opts.outputSchema } : {}) }),
+    });
+    if (!res.ok) throw new Error(`runtime answered ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    bumpConversation(user, sessionId);
+  } else {
+    const res = await fetch(`${url}/eve/v1/session`, {
+      method: "POST",
+      headers: agentHeaders(user),
+      body: JSON.stringify({ message: opts.message, ...(opts.outputSchema ? { outputSchema: opts.outputSchema } : {}) }),
+    });
+    if (!res.ok) throw new Error(`runtime answered ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    const b = (await res.json()) as { sessionId: string; continuationToken?: string };
+    sessionId = b.sessionId;
+    continuation = b.continuationToken;
+    recordConversation(user, sessionId, opts.title ?? titleFrom(opts.message), opts.source, continuation);
+  }
+  const events = await readEvents(user, sessionId, { startIndex, follow: true, awaitTurn: true, timeoutMs: opts.timeoutMs ?? 30 * 60_000 });
+  const cont = continuationFrom(events) ?? continuation;
+  if (cont) db.query("UPDATE conversations SET continuation = ? WHERE id = ?").run(cont, sessionId);
+  return {
+    sessionId,
+    continuation: cont,
+    text: finalText(events),
+    output: structuredOutput(events),
+    failed: events.some((e) => e.type === "session.failed" || e.type === "turn.failed"),
+    events,
+  };
 }

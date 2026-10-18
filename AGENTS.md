@@ -32,7 +32,7 @@ Tailwind honours that ignore — see traps).
   automations/settings/admin/stub. Built to `web/dist`, served by the host.
 - `deploy/` — `install.sh` (Docker, runsc, Node 24, Bun, Caddy, SearXNG,
   systemd), `Dockerfile.agent`, `firewall.sh`, units, `update.sh`, `backup.sh`.
-- `tools/` — `check.sh` (gate: 11 steps), `e2e.ts` (52 checks process driver,
+- `tools/` — `check.sh` (gate: 15 steps), `e2e.ts` (52 checks process driver,
   62 with `--gvisor-fake`, `--real` adds a free-lane model turn),
   `fake-docker.sh` (records docker argv, runs "containers" as processes).
 - `reference/` — parked Zo-cloud-coupled files: `cloud-tools/` (media, maps,
@@ -43,7 +43,7 @@ Tailwind honours that ignore — see traps).
 
 ## Verified (2026-10-13)
 
-`bash tools/check.sh` → 11/11: agent tsc, eve 0 errors/0 warnings, agent build,
+`bash tools/check.sh` → 10/10: agent tsc, eve 0 errors/0 warnings, agent build,
 web tsc + build, host tsc, shellcheck, no Zo CDN/API refs, e2e both drivers.
 Real model turn on the Pollinations free lane (gpt-oss-20b) passes. UI driven
 in a real browser: login, chat with tool cards, conversation replay after a
@@ -70,3 +70,32 @@ Nothing has been deployed to any VPS (Zandy's rule: no hardware without a go).
   so `web/` only builds styles because openzo is its own git repo.
 - `new URL("/search", base)` drops a base path; append instead.
 - Zo sandbox: `pkill -f` patterns kill your own shell — kill by PID.
+- Behind Zo's private-service gate, login succeeded but the session never
+  stuck (the gate's proxy drops our cookie). Sessions now ride three
+  carriers: `X-Openzo-Session` header (web app, from localStorage),
+  `?oz_token=` (websocket, downloads, `<img>`), cookie. `OPENZO_DEBUG_HEADERS=1`
+  logs what each `/api` request actually carried.
+- `bun host/cli.ts reset-password` on the live `./data` changes a real
+  user's password — test with a throwaway account instead.
+
+## Promo film (`promo/`)
+
+68 s 1920×1080 promo, live at https://openzo-site-failure.zocomputer.io/watch
+(file: `/media/openzo-promo.mp4` on the site). `promo.html` is a deterministic
+scene graph — `render(t)` sets every element for time t; `render.py` drives it
+with Playwright frame by frame (30 fps, ~15 min) into ffmpeg. Voice = 8 Grok
+TTS clips (`audio/vo-0N.wav`, voice "eve"; that TTS rejects `instructions`),
+placed at scene start + 0.4 s; scene table lives in `SCENES` in promo.html and
+must match the clip lengths. `out/mix.wav` = voice + synthesized pad + scene
+chimes, sidechain-ducked, loudnorm −16 LUFS. `finish.sh` muxes, makes the
+poster, copies both into `openzo-site/public/media/` (then restart the
+`openzo-site` service so it rebuilds).
+
+## Test instance on this Zo
+
+Private hosted service `openzo` (id `svc_9idHOnYW25U`, the repurposed
+`fp-cbt2-inspect` slot — the plan's hosted-service cap is full) →
+**https://openzo-failure.zo.computer** (Zo sign-in gate, then openzo's own login).
+`bun host/server.ts` on 0.0.0.0:8798, process driver, data in `./data`,
+signup closed, default lane free. Rebuild (`npm run build`) then
+`update_user_service` to pick up changes. Don't run a second host on `./data`.

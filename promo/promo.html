@@ -1,0 +1,342 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;700&display=swap" />
+<style>
+  :root { --bg:#161412; --fg:#f2efe8; --mut:#a59d92; --line:rgba(255,255,255,.09); --acc:#7cc4ff; --ok:#5fd38d; --warn:#ffb454; --bad:#ff6b6b; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); color: var(--fg); font-family: "Hanken Grotesk", sans-serif; }
+  .abs { position: absolute; }
+  #bg { inset: 0; }
+  .blob { position: absolute; border-radius: 50%; filter: blur(120px); opacity: .55; }
+  #grid { inset: 0; background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: 80px 80px; mask-image: radial-gradient(ellipse at center, #000 30%, transparent 75%); }
+  .scene { position: absolute; inset: 0; opacity: 0; }
+  .serif { font-family: "Instrument Serif", serif; font-weight: 400; }
+  .mono { font-family: "JetBrains Mono", monospace; }
+  .win { position: absolute; border-radius: 18px; overflow: hidden; background: #fbfaf7; box-shadow: 0 40px 120px -20px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.08); }
+  .win .bar { height: 38px; background: #ece8e1; display: flex; align-items: center; gap: 8px; padding: 0 16px; }
+  .win .bar i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  .win .bar span { margin-left: 14px; font: 500 14px "JetBrains Mono"; color: #8a837a; }
+  .win img { display: block; width: 100%; }
+  .kicker { font: 600 22px "Hanken Grotesk"; letter-spacing: .18em; text-transform: uppercase; color: var(--acc); }
+  .title { font-size: 92px; line-height: 1.02; letter-spacing: -0.02em; }
+  .sub { font-size: 30px; color: var(--mut); line-height: 1.4; }
+  .chip { position: absolute; padding: 14px 22px; border-radius: 14px; background: rgba(22,20,18,.92); border: 1px solid rgba(255,255,255,.14); font: 500 24px "JetBrains Mono"; color: var(--fg); box-shadow: 0 20px 50px rgba(0,0,0,.5); white-space: nowrap; }
+  .pill { position: absolute; padding: 22px 36px; border-radius: 999px; font: 600 40px "Hanken Grotesk"; border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.04); white-space: nowrap; }
+  .box { position: absolute; border-radius: 22px; border: 2px solid rgba(255,255,255,.18); background: rgba(255,255,255,.04); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+  .term { position: absolute; border-radius: 20px; background: #0f0e0d; border: 1px solid rgba(255,255,255,.12); padding: 34px 38px; font: 500 27px/1.7 "JetBrains Mono"; box-shadow: 0 30px 90px rgba(0,0,0,.6); }
+  #subs { position: absolute; left: 0; right: 0; bottom: 54px; text-align: center; z-index: 50; }
+  #subs span { display: inline-block; max-width: 1500px; padding: 12px 26px; border-radius: 12px; background: rgba(10,9,8,.72); font: 500 34px "Hanken Grotesk"; color: #fff; }
+  #progress { z-index: 51; position: absolute; left: 0; bottom: 0; height: 5px; background: linear-gradient(90deg, var(--acc), var(--ok)); }
+  svg { overflow: visible; }
+</style>
+</head>
+<body>
+<div id="bg" class="abs">
+  <div class="blob" id="b1" style="width:900px;height:900px;background:#2d5d8c"></div>
+  <div class="blob" id="b2" style="width:800px;height:800px;background:#7a4a2a"></div>
+  <div class="blob" id="b3" style="width:700px;height:700px;background:#2c6b4f"></div>
+  <div id="grid" class="abs"></div>
+</div>
+
+<!-- 1 intro -->
+<div class="scene" id="s1">
+  <svg id="logo" class="abs" width="260" height="260" viewBox="0 0 32 32" style="left:830px;top:250px">
+    <path id="ring" d="M26 16a10 10 0 1 1-4.1-8.08" stroke="#f2efe8" stroke-width="2.6" stroke-linecap="round" fill="none" pathLength="100" stroke-dasharray="100" />
+    <circle id="dot" cx="25.2" cy="8.6" r="2.6" fill="#7cc4ff" />
+  </svg>
+  <div id="word" class="abs" style="left:0;right:0;top:560px;text-align:center;font:700 150px 'Hanken Grotesk';letter-spacing:-.04em"></div>
+  <div id="tag" class="abs serif" style="left:0;right:0;top:760px;text-align:center;font-size:64px;color:#d8d2c7">Your own Zo. <i style="color:#a59d92">On your own server.</i></div>
+</div>
+
+<!-- 2 agent -->
+<div class="scene" id="s2">
+  <div class="abs" style="left:120px;top:150px;width:560px" id="s2t">
+    <div class="kicker">The agent</div>
+    <div class="title serif" style="margin-top:22px">A real shell.<br><i style="color:#a59d92">Real results.</i></div>
+    <div class="sub" style="margin-top:28px">Writes the code, runs it, shows you the output.</div>
+  </div>
+  <div class="win" id="s2w" style="left:760px;top:170px;width:1080px">
+    <div class="bar"><i style="background:#e5625e"></i><i style="background:#e6b449"></i><i style="background:#5fbf6b"></i><span>openzo · chat</span></div>
+    <div style="overflow:hidden;height:640px"><img id="s2img" src="assets/chat.png" style="transform-origin:0 0" /></div>
+  </div>
+  <div class="chip" id="c21" style="left:700px;top:760px"><span style="color:#7cc4ff">write</span> fib.py</div>
+  <div class="chip" id="c22" style="left:980px;top:840px"><span style="color:#5fd38d">bash</span> python3 fib.py</div>
+  <div class="chip" id="c23" style="left:1360px;top:760px;color:#ffb454" ></div>
+</div>
+
+<!-- 3 workspace -->
+<div class="scene" id="s3">
+  <div class="abs" style="left:0;right:0;top:90px;text-align:center" id="s3t">
+    <div class="kicker">One persistent workspace</div>
+    <div class="title serif" style="font-size:80px;margin-top:16px">Files and a terminal, <i style="color:#a59d92">in the same place.</i></div>
+  </div>
+  <div class="win" id="s3a" style="left:130px;top:290px;width:860px">
+    <div class="bar"><i style="background:#e5625e"></i><i style="background:#e6b449"></i><i style="background:#5fbf6b"></i><span>files</span></div>
+    <div style="height:470px;overflow:hidden"><img src="assets/files.png" /></div>
+  </div>
+  <div class="win" id="s3b" style="left:930px;top:340px;width:860px">
+    <div class="bar"><i style="background:#e5625e"></i><i style="background:#e6b449"></i><i style="background:#5fbf6b"></i><span>terminal</span></div>
+    <div style="height:470px;overflow:hidden"><img src="assets/terminal.png" /></div>
+  </div>
+</div>
+
+<!-- 4 automations -->
+<div class="scene" id="s4">
+  <div class="abs" style="left:1180px;top:200px;width:640px" id="s4t">
+    <div class="kicker">Automations</div>
+    <div class="title serif" style="margin-top:22px">Set it.<br><i style="color:#a59d92">It runs.</i></div>
+    <div class="term" id="s4term" style="position:relative;margin-top:40px;padding:26px 30px;font-size:30px">
+      <div style="color:#a59d92;font-size:20px">schedule</div>
+      <div id="cron" style="color:#7cc4ff"></div>
+      <div style="color:#a59d92;font-size:20px;margin-top:12px">prompt</div>
+      <div id="cronp" style="font-size:22px;line-height:1.5;color:#f2efe8"></div>
+    </div>
+  </div>
+  <div class="win" id="s4w" style="left:100px;top:180px;width:1000px">
+    <div class="bar"><i style="background:#e5625e"></i><i style="background:#e6b449"></i><i style="background:#5fbf6b"></i><span>automations</span></div>
+    <div style="height:600px;overflow:hidden"><img src="assets/automations.png" /></div>
+  </div>
+  <svg id="clock" class="abs" width="120" height="120" viewBox="0 0 24 24" style="left:1000px;top:110px">
+    <circle cx="12" cy="12" r="10" fill="#161412" stroke="#7cc4ff" stroke-width="1.6"/>
+    <line id="hand" x1="12" y1="12" x2="12" y2="5.5" stroke="#f2efe8" stroke-width="1.6" stroke-linecap="round"/>
+    <line x1="12" y1="12" x2="16" y2="12" stroke="#7cc4ff" stroke-width="1.6" stroke-linecap="round"/>
+  </svg>
+</div>
+
+<!-- 5 models -->
+<div class="scene" id="s5">
+  <div class="abs" style="left:0;right:0;top:120px;text-align:center" id="s5t">
+    <div class="kicker">Bring any model</div>
+    <div class="title serif" style="margin-top:16px">Your keys. <i style="color:#a59d92">Your choice.</i></div>
+  </div>
+  <div id="pills"></div>
+  <div class="abs" id="free" style="left:0;right:0;top:820px;text-align:center">
+    <span style="display:inline-block;padding:20px 40px;border-radius:999px;background:#5fd38d;color:#0f1a13;font:700 38px 'Hanken Grotesk'">Start free — no key needed</span>
+  </div>
+</div>
+
+<!-- 6 gvisor -->
+<div class="scene" id="s6">
+  <div class="abs" style="left:110px;top:170px;width:620px" id="s6t">
+    <div class="kicker" style="color:#5fd38d">Built for teams</div>
+    <div class="title serif" style="margin-top:22px">One kernel boundary <i style="color:#a59d92">per person.</i></div>
+    <div id="s6list" style="margin-top:40px;font-size:32px;line-height:1.9"></div>
+  </div>
+  <svg id="diagram" class="abs" width="1100" height="900" style="left:780px;top:90px"></svg>
+</div>
+
+<!-- 7 deploy -->
+<div class="scene" id="s7">
+  <div class="abs" style="left:0;right:0;top:90px;text-align:center" id="s7t">
+    <div class="kicker">Deploy anywhere</div>
+    <div class="title serif" style="font-size:84px;margin-top:16px">Laptop or VPS. <i style="color:#a59d92">One command.</i></div>
+  </div>
+  <div class="term" id="t71" style="left:110px;top:340px;width:800px;height:520px">
+    <div style="color:#a59d92;font-size:22px;margin-bottom:14px">your laptop</div>
+    <div id="l71"></div>
+  </div>
+  <div class="term" id="t72" style="left:1010px;top:340px;width:800px;height:520px">
+    <div style="color:#a59d92;font-size:22px;margin-bottom:14px">your VPS</div>
+    <div id="l72"></div>
+  </div>
+</div>
+
+<!-- 8 outro -->
+<div class="scene" id="s8">
+  <svg class="abs" width="200" height="200" viewBox="0 0 32 32" style="left:860px;top:200px">
+    <path d="M26 16a10 10 0 1 1-4.1-8.08" stroke="#f2efe8" stroke-width="2.6" stroke-linecap="round" fill="none" />
+    <circle cx="25.2" cy="8.6" r="2.6" fill="#7cc4ff" />
+  </svg>
+  <div class="abs" id="o1" style="left:0;right:0;top:440px;text-align:center;font:700 130px 'Hanken Grotesk';letter-spacing:-.04em">openzo</div>
+  <div class="abs serif" id="o2" style="left:0;right:0;top:600px;text-align:center;font-size:60px;color:#d8d2c7">Your own Zo. <i style="color:#a59d92">On your own server.</i></div>
+  <div class="abs" id="o3" style="left:0;right:0;top:740px;text-align:center">
+    <span class="mono" style="display:inline-block;padding:18px 34px;border-radius:16px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.05);font-size:34px;color:#7cc4ff">openzo-site-failure.zocomputer.io</span>
+  </div>
+</div>
+
+<div id="subs"><span id="subtext"></span></div>
+<div id="progress"></div>
+
+<script>
+const SCENES = [
+  { id: "s1", start: 0, len: 5.75, vo: 4.15, text: "This is openzo. Your own Zo, on your own server." },
+  { id: "s2", start: 5.75, len: 8.13, vo: 7.03, text: "An AI agent with a real shell. Ask for something, and it writes the code, runs it, and shows you the result." },
+  { id: "s3", start: 13.88, len: 9.09, vo: 7.99, text: "Your workspace persists. Every file the agent makes is right there in Files, and a real terminal opens in the same place." },
+  { id: "s4", start: 22.97, len: 7.49, vo: 6.39, text: "Schedule automations with a cron line and a prompt. Every run becomes a conversation you can pick up later." },
+  { id: "s5", start: 30.46, len: 9.73, vo: 8.63, text: "Bring any model. OpenAI, Anthropic, OpenRouter, Groq, or Ollama. Or start free, with no key at all." },
+  { id: "s6", start: 40.19, len: 9.09, vo: 7.99, text: "For teams, every user gets their own gVisor container. Their own kernel boundary. No lateral movement. Nothing exposed." },
+  { id: "s7", start: 49.28, len: 9.41, vo: 8.31, text: "Run it on your laptop with one command. Or on a VPS with one installer, with HTTPS, search, and isolation included." },
+  { id: "s8", start: 58.69, len: 9.31, vo: 6.71, text: "openzo. Your own Zo, on your own server. Read the guide, and get it, on the openzo site." },
+];
+const TOTAL = 68.0;
+const VO_LEAD = 0.4;           // narration starts this long into each scene
+window.PROMO = { scenes: SCENES, total: TOTAL, lead: VO_LEAD };
+
+const $ = (id) => document.getElementById(id);
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const easeOut = (x) => 1 - Math.pow(1 - x, 3);
+const easeInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const back = (x) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const typed = (s, t, a, cps) => s.slice(0, Math.max(0, Math.floor((t - a) * cps)));
+function set(el, o) { if (typeof el === "string") el = $(el); Object.assign(el.style, o); }
+function enter(el, t, a, { dx = 0, dy = 40, s = 1, d = 0.7 } = {}) {
+  const p = easeOut(prog(t, a, a + d));
+  set(el, { opacity: p, transform: `translate(${dx * (1 - p)}px, ${dy * (1 - p)}px) scale(${s + (1 - s) * p})` });
+}
+
+// static builders
+"openzo".split("").forEach((ch) => { const s = document.createElement("span"); s.textContent = ch; s.style.display = "inline-block"; $("word").appendChild(s); });
+const MODELS = [["OpenAI", "#f2efe8"], ["Anthropic", "#e8b48c"], ["OpenRouter", "#9ab8ff"], ["Groq", "#ff9a6b"], ["Ollama", "#d8d2c7"], ["Vercel AI Gateway", "#f2efe8"], ["vLLM", "#b8a3ff"], ["LM Studio", "#7cc4ff"], ["Any OpenAI-compatible", "#5fd38d"]];
+const PILL_POS = [[230, 380], [690, 360], [1210, 380], [380, 530], [800, 540], [1180, 530], [250, 680], [640, 690], [1050, 680]];
+MODELS.forEach(([n, c], i) => { const d = document.createElement("div"); d.className = "pill"; d.textContent = n; d.style.color = c; d.style.left = PILL_POS[i][0] + "px"; d.style.top = PILL_POS[i][1] + "px"; d.id = "p" + i; $("pills").appendChild(d); });
+const BULLETS = ["runsc container per user", "no traffic between users", "private + metadata ranges blocked", "published on loopback only"];
+BULLETS.forEach((b, i) => { const d = document.createElement("div"); d.id = "bl" + i; d.innerHTML = `<span style="color:#5fd38d">●</span>&nbsp;&nbsp;${b}`; $("s6list").appendChild(d); });
+
+// gVisor diagram
+const NS = "http://www.w3.org/2000/svg";
+const svg = $("diagram");
+function el(tag, attrs, parent = svg) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; }
+const HOST = [550, 170];
+const USERS = [[180, 560, "alice"], [430, 690, "bob"], [680, 690, "chen"], [920, 560, "dana"]];
+const links = USERS.map(([x, y]) => el("line", { x1: HOST[0], y1: HOST[1] + 70, x2: x, y2: y - 70, stroke: "#7cc4ff", "stroke-width": 3, "stroke-dasharray": "8 8", pathLength: 100 }));
+const hostG = el("g", {});
+el("rect", { x: HOST[0] - 200, y: HOST[1] - 70, width: 400, height: 140, rx: 24, fill: "rgba(124,196,255,.10)", stroke: "#7cc4ff", "stroke-width": 2.5 }, hostG);
+el("text", { x: HOST[0], y: HOST[1] - 8, "text-anchor": "middle", fill: "#f2efe8", "font-size": 36, "font-family": "Hanken Grotesk", "font-weight": 700 }, hostG).textContent = "openzo host";
+el("text", { x: HOST[0], y: HOST[1] + 34, "text-anchor": "middle", fill: "#a59d92", "font-size": 24, "font-family": "JetBrains Mono" }, hostG).textContent = "auth · JWT proxy · files";
+const userG = USERS.map(([x, y, n]) => {
+  const g = el("g", {});
+  el("rect", { x: x - 110, y: y - 70, width: 220, height: 140, rx: 22, fill: "rgba(95,211,141,.08)", stroke: "#5fd38d", "stroke-width": 2.5 }, g);
+  el("text", { x, y: y - 6, "text-anchor": "middle", fill: "#f2efe8", "font-size": 32, "font-family": "Hanken Grotesk", "font-weight": 600 }, g).textContent = n;
+  el("text", { x, y: y + 34, "text-anchor": "middle", fill: "#5fd38d", "font-size": 22, "font-family": "JetBrains Mono" }, g).textContent = "runsc ▣";
+  return g;
+});
+const blocks = [[0, 1], [1, 2], [2, 3]].map(([a, b]) => {
+  const [x1, y1] = USERS[a], [x2, y2] = USERS[b];
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2 + 10;
+  const g = el("g", {});
+  el("line", { x1: x1 + 115, y1, x2: x2 - 115, y2, stroke: "#ff6b6b", "stroke-width": 3, opacity: .6 }, g);
+  el("circle", { cx: mx, cy: my - 10, r: 22, fill: "#161412", stroke: "#ff6b6b", "stroke-width": 3 }, g);
+  el("path", { d: `M${mx - 9} ${my - 19} L${mx + 9} ${my - 1} M${mx + 9} ${my - 19} L${mx - 9} ${my - 1}`, stroke: "#ff6b6b", "stroke-width": 3.5, "stroke-linecap": "round" }, g);
+  return g;
+});
+
+// deploy terminals
+const L71 = [["$ ", "./start-local.sh", "#f2efe8"], ["", "→ installing deps", "#a59d92"], ["", "→ eve build · vite build", "#a59d92"], ["", "openzo → http://127.0.0.1:8080", "#5fd38d"]];
+const L72 = [["# ", "OPENZO_DOMAIN=zo.acme.com \\", "#f2efe8"], ["  ", "bash deploy/install.sh", "#f2efe8"], ["✓ ", "Docker + gVisor (runsc)", "#5fd38d"], ["✓ ", "Caddy · automatic HTTPS", "#5fd38d"], ["✓ ", "SearXNG · firewall · systemd", "#5fd38d"], ["", "openzo is up → https://zo.acme.com", "#7cc4ff"]];
+function termLines(target, lines, t, a, gap) {
+  let html = "";
+  lines.forEach(([pre, txt, col], i) => {
+    const st = a + i * gap;
+    if (t < st) return;
+    const shown = i < 2 && pre.trim() !== "✓" ? typed(txt, t, st, 38) : txt;
+    html += `<div style="color:${col}"><span style="color:#a59d92">${pre}</span>${shown}</div>`;
+  });
+  $(target).innerHTML = html;
+}
+
+function render(t) {
+  // background drift
+  set("b1", { left: `${-200 + 120 * Math.sin(t * 0.21)}px`, top: `${-250 + 90 * Math.cos(t * 0.17)}px` });
+  set("b2", { left: `${1250 + 140 * Math.cos(t * 0.15)}px`, top: `${380 + 110 * Math.sin(t * 0.19)}px` });
+  set("b3", { left: `${500 + 160 * Math.sin(t * 0.12 + 1)}px`, top: `${650 + 80 * Math.cos(t * 0.23)}px` });
+  set("grid", { backgroundPosition: `${(t * 12) % 80}px ${(t * 8) % 80}px` });
+  set("progress", { width: `${(t / TOTAL) * 100}%` });
+
+  // scene visibility with crossfades
+  let current = null;
+  for (const s of SCENES) {
+    const local = t - s.start;
+    const fadeIn = s.start === 0 ? 1 : easeInOut(prog(local, 0, 0.5));
+    const fadeOut = s.id === "s8" ? 1 - prog(t, TOTAL - 0.9, TOTAL) : 1 - easeInOut(prog(local, s.len - 0.35, s.len + 0.15));
+    const o = local < -0.1 || local > s.len + 0.2 ? 0 : clamp(Math.min(fadeIn, fadeOut));
+    set(s.id, { opacity: o, display: o > 0 ? "block" : "none" });
+    if (local >= 0 && local < s.len) current = s;
+  }
+
+  // subtitles: show during narration
+  if (current) {
+    const l = t - current.start;
+    const on = l > VO_LEAD - 0.1 && l < VO_LEAD + current.vo + 0.35;
+    $("subtext").textContent = current.text;
+    set("subs", { opacity: on ? clamp(Math.min((l - VO_LEAD + 0.1) * 4, (VO_LEAD + current.vo + 0.35 - l) * 4)) : 0 });
+  }
+
+  // 1 intro
+  { const l = t;
+    $("ring").style.strokeDashoffset = 100 - 100 * easeInOut(prog(l, 0.2, 1.6));
+    const dp = back(prog(l, 1.4, 1.9)); $("dot").setAttribute("r", 2.6 * clamp(dp, 0, 2));
+    set("logo", { transform: `translateY(${-40 * easeInOut(prog(l, 1.8, 2.5))}px) scale(${1 - 0.25 * easeInOut(prog(l, 1.8, 2.5))})` });
+    [...$("word").children].forEach((c, i) => { const p = back(prog(l, 2.0 + i * 0.07, 2.6 + i * 0.07)); set(c, { opacity: clamp(p), transform: `translateY(${60 * (1 - p)}px)` }); });
+    enter("tag", l, 2.9, { dy: 30, d: 0.8 });
+  }
+  // 2 agent
+  { const l = t - 5.75;
+    enter("s2t", l, 0.1, { dx: -60, dy: 0 });
+    enter("s2w", l, 0.25, { dy: 120, s: 0.94, d: 0.9 });
+    const z = easeInOut(prog(l, 2.2, 6.5));
+    set("s2img", { transform: `translate(${-330 * z}px, ${-40 * z}px) scale(${1 + 0.42 * z})` });
+    enter("c21", l, 2.6, { dy: 30, s: 0.8, d: 0.5 });
+    enter("c22", l, 3.6, { dy: 30, s: 0.8, d: 0.5 });
+    enter("c23", l, 4.6, { dy: 30, s: 0.8, d: 0.5 });
+    $("c23").textContent = typed("0 1 1 2 3 5 8 13 21 … 377", l, 4.7, 18) || " ";
+  }
+  // 3 workspace
+  { const l = t - 13.88;
+    enter("s3t", l, 0.1, { dy: -30 });
+    const a = easeOut(prog(l, 0.4, 1.4)), b = easeOut(prog(l, 1.4, 2.4));
+    set("s3a", { opacity: a, transform: `translateX(${-200 * (1 - a)}px) rotate(${-2 * (1 - a) - 1.2}deg)` });
+    set("s3b", { opacity: b, transform: `translateX(${200 * (1 - b)}px) rotate(${2 * (1 - b) + 1.2}deg)` });
+    const swap = easeInOut(prog(l, 4.8, 5.6));
+    set("s3a", { zIndex: swap > 0.5 ? 2 : 1 }); set("s3b", { zIndex: swap > 0.5 ? 1 : 2 });
+    const float = Math.sin(l * 1.2) * 6;
+    $("s3a").style.transform += ` translateY(${float}px)`; $("s3b").style.transform += ` translateY(${-float}px)`;
+  }
+  // 4 automations
+  { const l = t - 22.97;
+    enter("s4w", l, 0.1, { dx: -100, dy: 0, d: 0.8 });
+    enter("s4t", l, 0.4, { dx: 80, dy: 0 });
+    enter("clock", l, 0.8, { dy: 0, s: 0.3, d: 0.6 });
+    $("hand").setAttribute("transform", `rotate(${l * 140} 12 12)`);
+    $("cron").textContent = typed("0 8 * * 1-5", l, 1.2, 10) || " ";
+    $("cronp").textContent = typed("Search the web for the top AI agent stories and write a digest to digests/today.md", l, 2.4, 34);
+  }
+  // 5 models
+  { const l = t - 30.46;
+    enter("s5t", l, 0.1, { dy: -30 });
+    MODELS.forEach((_, i) => { const p = back(prog(l, 0.6 + i * 0.32, 1.1 + i * 0.32)); const fl = Math.sin(l * 1.4 + i) * 6;
+      set("p" + i, { opacity: clamp(p), transform: `translateY(${fl + 50 * (1 - clamp(p))}px) scale(${0.6 + 0.4 * p})` }); });
+    const fp = back(prog(l, 6.4, 6.9)); const pulse = 1 + 0.03 * Math.sin(l * 6) * prog(l, 7, 7.5);
+    set("free", { opacity: clamp(fp), transform: `scale(${(0.7 + 0.3 * fp) * pulse})` });
+  }
+  // 6 gvisor
+  { const l = t - 40.19;
+    enter("s6t", l, 0.1, { dx: -60, dy: 0 });
+    BULLETS.forEach((_, i) => enter("bl" + i, l, 2.4 + i * 1.15, { dx: -30, dy: 0, d: 0.5 }));
+    const hp = back(prog(l, 0.3, 0.9)); hostG.setAttribute("opacity", clamp(hp)); hostG.setAttribute("transform", `translate(${HOST[0]} ${HOST[1]}) scale(${0.7 + 0.3 * hp}) translate(${-HOST[0]} ${-HOST[1]})`);
+    links.forEach((ln, i) => { const p = prog(l, 0.9 + i * 0.25, 1.6 + i * 0.25); ln.setAttribute("opacity", p > 0 ? 1 : 0); ln.setAttribute("stroke-dashoffset", 100 - 100 * p - l * 20); });
+    userG.forEach((g, i) => { const [x, y] = USERS[i]; const p = back(prog(l, 1.1 + i * 0.25, 1.7 + i * 0.25)); g.setAttribute("opacity", clamp(p)); g.setAttribute("transform", `translate(${x} ${y}) scale(${0.6 + 0.4 * p}) translate(${-x} ${-y})`); });
+    blocks.forEach((g, i) => { const p = back(prog(l, 4.2 + i * 0.4, 4.7 + i * 0.4)); g.setAttribute("opacity", clamp(p)); });
+  }
+  // 7 deploy
+  { const l = t - 49.28;
+    enter("s7t", l, 0.1, { dy: -30 });
+    enter("t71", l, 0.4, { dy: 80, d: 0.7 });
+    enter("t72", l, 3.6, { dy: 80, d: 0.7 });
+    termLines("l71", L71, l, 1.0, 0.75);
+    termLines("l72", L72, l, 4.1, 0.75);
+  }
+  // 8 outro
+  { const l = t - 58.69;
+    enter("o1", l, 0.3, { dy: 50, d: 0.8 });
+    enter("o2", l, 1.0, { dy: 30, d: 0.8 });
+    const p = back(prog(l, 4.0, 4.6)); set("o3", { opacity: clamp(p), transform: `scale(${0.8 + 0.2 * p})` });
+  }
+}
+window.render = render;
+render(0);
+</script>
+</body>
+</html>

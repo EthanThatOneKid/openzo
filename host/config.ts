@@ -59,6 +59,12 @@ export const config = {
   internalHost: env("OPENZO_INTERNAL_HOST"),
   internalPort: num("OPENZO_INTERNAL_PORT", 8091),
   trustProxy: env("OPENZO_TRUST_PROXY") === "1",
+  // Sites: with a wildcard domain set, every service is also served at
+  // https://<service>-<user>.<sitesDomain> (Caddy on-demand TLS asks
+  // /api/sites/tls-ask before issuing). Without it, sites live under
+  // <host>/s/<user>/<service>/ only.
+  sitesDomain: env("OPENZO_SITES_DOMAIN")?.toLowerCase(),
+  maxServicesPerUser: num("OPENZO_MAX_SERVICES", 10),
 };
 
 export function userDir(name: string) {

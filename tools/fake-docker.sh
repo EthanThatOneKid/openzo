@@ -42,7 +42,10 @@ case "$cmd" in
   inspect)
     name="${!#}"
     [ -f "$STATE/c/$name/status" ] || exit 1
-    cat "$STATE/c/$name/status" ;;
+    case "$*" in
+      *NetworkSettings*) echo "127.0.0.1" ;;
+      *) cat "$STATE/c/$name/status" ;;
+    esac ;;
   run)
     name=""; envfile=""; ws=""; st=""
     while [ $# -gt 1 ]; do
@@ -65,9 +68,15 @@ case "$cmd" in
   port) echo "127.0.0.1:$(cat "$STATE/c/$1/port")" ;;
   logs) cat "$STATE/c/${!#}/log" ;;
   exec)
-    while [ $# -gt 0 ]; do case "$1" in -it|-i|-t) shift ;; -w|-e) shift 2 ;; *) break ;; esac; done
+    envs=()
+    while [ $# -gt 0 ]; do case "$1" in -it|-i|-t|-d) shift ;; -w) shift 2 ;; -e) envs+=("$2"); shift 2 ;; *) break ;; esac; done
     name="$1"; shift
-    cd "$(cat "$STATE/c/$name/workspace")" && exec "$@" ;;
+    ws="$(cat "$STATE/c/$name/workspace")"; st="$(cat "$STATE/c/$name/state")"
+    # The container's /workspace and /state are the bind-mounted host dirs.
+    args=()
+    for a in "$@"; do a="${a//\/workspace/$ws}"; args+=("${a//\/state/$st}"); done
+    for i in "${!envs[@]}"; do envs[i]="${envs[i]//\/workspace/$ws}"; done
+    cd "$ws" && exec env "${envs[@]}" "${args[@]}" ;;
   ps) ls "$STATE/c" 2>/dev/null | sed 's/^/fakecontainer-/' ;;
   *) echo "fake-docker: unsupported $cmd" >&2; exit 1 ;;
 esac

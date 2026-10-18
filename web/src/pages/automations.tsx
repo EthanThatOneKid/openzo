@@ -22,7 +22,20 @@ interface Automation {
   last_status: string | null;
   last_conversation: string | null;
   next_run: number | null;
+  deliver: string;
 }
+
+const DELIVER = [
+  { id: "", label: "Conversation list only" },
+  { id: "auto", label: "My preferred channel" },
+  { id: "telegram", label: "Telegram" },
+  { id: "email", label: "Email" },
+  { id: "discord", label: "Discord" },
+  { id: "slack", label: "Slack" },
+  { id: "ntfy", label: "ntfy push" },
+  { id: "sms", label: "SMS" },
+  { id: "webhook", label: "Webhook" },
+];
 
 const PRESETS = [
   { label: "Every morning 9:00", cron: "0 9 * * *" },
@@ -39,11 +52,12 @@ function Editor({ initial, onDone }: { initial?: Automation; onDone: () => void 
   const [cron, setCron] = useState(initial?.cron ?? "0 9 * * *");
   const [tz, setTz] = useState(initial?.tz ?? localTz);
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
+  const [deliver, setDeliver] = useState(initial?.deliver ?? "");
   const [busy, setBusy] = useState(false);
   const save = async () => {
     setBusy(true);
     try {
-      const body = { name, cron, tz, prompt };
+      const body = { name, cron, tz, prompt, deliver };
       if (initial) await api(`/api/automations/${initial.id}`, { method: "PATCH", json: body });
       else await api("/api/automations", { method: "POST", json: body });
       onDone();
@@ -76,6 +90,19 @@ function Editor({ initial, onDone }: { initial?: Automation; onDone: () => void 
       <div className="flex flex-col gap-1.5">
         <Label>What should the agent do?</Label>
         <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={6} placeholder="Check the top Hacker News stories about AI agents and write a short digest to digests/$(date).md" />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label>Send the result to</Label>
+        <select value={deliver} onChange={(e) => setDeliver(e.target.value)} className="h-9 rounded-md border bg-transparent px-2 text-sm">
+          {DELIVER.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.label}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-muted-foreground">
+          Channels are set up in <Link to="/settings/channels" className="underline underline-offset-2">Settings → Channels</Link>.
+        </p>
       </div>
       <DialogFooter>
         <Button onClick={save} disabled={busy || !name.trim() || !prompt.trim()}>
@@ -140,6 +167,7 @@ export default function AutomationsPage() {
                     <div className="font-medium">{a.name}</div>
                     <div className="mt-0.5 font-mono text-xs text-muted-foreground">
                       {a.cron} · {a.tz}
+                      {a.deliver && ` · → ${DELIVER.find((d) => d.id === a.deliver)?.label ?? a.deliver}`}
                     </div>
                   </button>
                   <div className="flex items-center gap-1">

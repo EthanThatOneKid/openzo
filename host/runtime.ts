@@ -12,6 +12,7 @@ import { connect, createServer } from "node:net";
 import { config, userDir } from "./config";
 import { audit, users, type User } from "./db";
 import { runtimeEnv } from "./settings";
+import { internalBase, runtimeToken } from "./internal";
 
 export type RuntimeState = "stopped" | "starting" | "running" | "error";
 
@@ -30,6 +31,11 @@ interface Runtime {
 
 const runtimes = new Map<string, Runtime>();
 const usedPorts = new Set<number>();
+export const releasePort = (port: number) => usedPorts.delete(port);
+
+// Other modules (services, browser) register a check here so the reaper never
+// stops a container that is hosting something the user expects to stay up.
+export const keepAliveChecks: ((name: string) => boolean)[] = [];
 
 export function paths(name: string) {
   const root = userDir(name);
@@ -45,7 +51,7 @@ export function ensureDirs(name: string) {
 
 // A port counts as free only if nothing answers on it AND we can bind it:
 // under gVisor a bind can succeed on a port another process already serves.
-async function portFree(port: number): Promise<boolean> {
+export async function portFree(port: number): Promise<boolean> {
   const answered = await new Promise<boolean>((done) => {
     const sock = connect({ host: "127.0.0.1", port });
     sock.setTimeout(300);
@@ -61,7 +67,7 @@ async function portFree(port: number): Promise<boolean> {
   });
 }
 
-async function allocatePort(): Promise<number> {
+export async function allocatePort(): Promise<number> {
   for (let i = 0; i < config.portSpan; i++) {
     const port = config.portBase + i;
     if (usedPorts.has(port)) continue;
@@ -97,6 +103,8 @@ function baseEnv(user: User, containerized: boolean): Record<string, string> {
   return {
     ...runtimeEnv(user, { containerized }),
     OPENZO_AGENT_SECRET: config.secret,
+    OPENZO_HOST_API: internalBase(containerized),
+    OPENZO_RUNTIME_TOKEN: `${user.name}.${runtimeToken(user.name)}`,
     EVE_LOG_LEVEL: process.env.EVE_LOG_LEVEL ?? "warn",
   };
 }
@@ -296,6 +304,7 @@ export function allRuntimes() {
 async function reapIdle(idleMs = config.idleMinutes * 60_000, limit = Infinity) {
   const candidates = [...runtimes.values()]
     .filter((r) => r.state === "running" && Date.now() - r.lastUsed >= idleMs)
+    .filter((r) => !(config.driver === "gvisor" && keepAliveChecks.some((k) => k(r.user))))
     .sort((a, b) => a.lastUsed - b.lastUsed)
     .slice(0, limit);
   for (const r of candidates) {

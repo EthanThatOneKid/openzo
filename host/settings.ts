@@ -17,10 +17,34 @@ export interface ModelSettings {
 export interface Settings {
   model: ModelSettings;
   search: { searxngUrl?: string; braveKey?: string; tavilyKey?: string; exaKey?: string };
+  media: MediaSettings;
   persona: string;
   rules: string;
   secrets: { name: string; value: string }[];
 }
+
+// Media tools (generate_image, generate_speech, transcribe_*, generate_video).
+// "auto" reuses the model preset's key where that provider has the API (OpenAI
+// for everything, Groq for transcription), else the free/local lane.
+export interface MediaLane {
+  provider?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+}
+export interface MediaSettings {
+  image: MediaLane;
+  speech: MediaLane & { voice?: string };
+  transcription: MediaLane;
+  video: { provider?: string; apiKey?: string; model?: string };
+}
+
+export const MEDIA_PROVIDERS = {
+  image: ["auto", "openai-compatible", "pollinations"],
+  speech: ["auto", "openai-compatible", "piper", "espeak"],
+  transcription: ["auto", "openai-compatible", "local"],
+  video: ["none", "fal", "replicate"],
+} as const;
 
 export interface Preset {
   id: string;
@@ -62,6 +86,12 @@ export function readSettings(user: User): Settings {
   return {
     model: { preset: config.defaultLane, ...(raw.model ?? {}) },
     search: raw.search ?? {},
+    media: {
+      image: raw.media?.image ?? {},
+      speech: raw.media?.speech ?? {},
+      transcription: raw.media?.transcription ?? {},
+      video: raw.media?.video ?? {},
+    },
     persona: raw.persona ?? "",
     rules: raw.rules ?? "",
     secrets: raw.secrets ?? [],
@@ -80,6 +110,12 @@ export function maskedSettings(s: Settings) {
       tavilyKey: mask(s.search.tavilyKey),
       exaKey: mask(s.search.exaKey),
     },
+    media: {
+      image: { ...s.media.image, apiKey: mask(s.media.image.apiKey) },
+      speech: { ...s.media.speech, apiKey: mask(s.media.speech.apiKey) },
+      transcription: { ...s.media.transcription, apiKey: mask(s.media.transcription.apiKey) },
+      video: { ...s.media.video, apiKey: mask(s.media.video.apiKey) },
+    },
     secrets: s.secrets.map((x) => ({ name: x.name, value: mask(x.value) })),
   };
 }
@@ -89,6 +125,25 @@ const keep = (next: unknown, prev?: string) =>
 
 const ENV_NAME = /^[A-Z_][A-Z0-9_]{0,63}$/;
 const RESERVED = /^(OPENZO_|WORKFLOW_|PORT$|HOST$|NITRO_|NODE_|PATH$|HOME$)/;
+
+const str = (next: unknown, prev?: string) => (typeof next === "string" ? next.trim() || undefined : prev);
+
+function mergeLane<T extends Record<string, string | undefined>>(prev: T, next: any, providers: readonly string[], fields: string[]): T {
+  const out: Record<string, string | undefined> = {};
+  out.provider = providers.includes(next?.provider) ? next.provider : prev.provider;
+  out.apiKey = keep(next?.apiKey, prev.apiKey);
+  for (const f of fields) out[f] = str(next?.[f], prev[f]);
+  return out as T;
+}
+
+function mergeMedia(prev: MediaSettings, m: any): MediaSettings {
+  return {
+    image: mergeLane(prev.image as Record<string, string | undefined>, m?.image, MEDIA_PROVIDERS.image, ["baseUrl", "model"]),
+    speech: mergeLane(prev.speech as Record<string, string | undefined>, m?.speech, MEDIA_PROVIDERS.speech, ["baseUrl", "model", "voice"]),
+    transcription: mergeLane(prev.transcription as Record<string, string | undefined>, m?.transcription, MEDIA_PROVIDERS.transcription, ["baseUrl", "model"]),
+    video: mergeLane(prev.video as Record<string, string | undefined>, m?.video, MEDIA_PROVIDERS.video, ["model"]),
+  };
+}
 
 export function mergeSettings(prev: Settings, input: any): Settings {
   const m = input?.model ?? {};
@@ -117,6 +172,7 @@ export function mergeSettings(prev: Settings, input: any): Settings {
       tavilyKey: keep(s.tavilyKey, prev.search.tavilyKey),
       exaKey: keep(s.exaKey, prev.search.exaKey),
     },
+    media: input?.media ? mergeMedia(prev.media, input.media) : prev.media,
     persona: typeof input?.persona === "string" ? input.persona.slice(0, 8000) : prev.persona,
     rules: typeof input?.rules === "string" ? input.rules.slice(0, 8000) : prev.rules,
     secrets,
@@ -172,8 +228,65 @@ export function runtimeEnv(user: User, opts: { containerized: boolean }): Record
   set("BRAVE_API_KEY", s.search.braveKey);
   set("TAVILY_API_KEY", s.search.tavilyKey);
   set("EXA_API_KEY", s.search.exaKey);
+  Object.assign(out, mediaEnv(s, opts));
   set("OPENZO_PERSONA", s.persona);
   set("OPENZO_RULES", s.rules);
   out.OPENZO_USER = user.name;
+  return out;
+}
+
+// Resolve Settings → Media (including "auto") into the OPENZO_MEDIA_* env that
+// agent/lib/media.ts reads. Host-level local-backend locations pass through.
+function mediaEnv(s: Settings, opts: { containerized: boolean }): Record<string, string> {
+  const out: Record<string, string> = {};
+  const set = (k: string, v?: string) => {
+    if (v) out[k] = opts.containerized ? v.replace(/\/\/(127\.0\.0\.1|localhost)(?=[:/])/, "//host.docker.internal") : v;
+  };
+  const m = s.model;
+  const OPENAI = "https://api.openai.com/v1";
+  const GROQ = "https://api.groq.com/openai/v1";
+  // The model preset's own key, when that provider serves the media API too.
+  const presetLane = (kind: "image" | "speech" | "transcription") => {
+    if (!m.apiKey) return undefined;
+    if (m.preset === "openai") return { baseUrl: m.baseUrl ?? OPENAI, apiKey: m.apiKey };
+    if (m.preset === "groq" && kind === "transcription") return { baseUrl: m.baseUrl ?? GROQ, apiKey: m.apiKey, model: "whisper-large-v3-turbo" };
+    return undefined;
+  };
+  const lane = (kind: "image" | "speech" | "transcription", local: string) => {
+    const l = s.media[kind];
+    const provider = l.provider ?? "auto";
+    if (provider === "openai-compatible") return { provider, baseUrl: l.baseUrl ?? OPENAI, apiKey: l.apiKey, model: l.model };
+    if (provider === "auto") {
+      if (l.apiKey) return { provider: "openai-compatible", baseUrl: l.baseUrl ?? OPENAI, apiKey: l.apiKey, model: l.model };
+      const p = presetLane(kind);
+      if (p) return { provider: "openai-compatible", baseUrl: p.baseUrl, apiKey: p.apiKey, model: l.model ?? ("model" in p ? p.model : undefined) };
+      return { provider: local, model: l.model };
+    }
+    return { provider, model: l.model };
+  };
+  const img = lane("image", "pollinations");
+  set("OPENZO_MEDIA_IMAGE_PROVIDER", img.provider);
+  set("OPENZO_MEDIA_IMAGE_BASE_URL", img.baseUrl);
+  set("OPENZO_MEDIA_IMAGE_API_KEY", img.apiKey);
+  set("OPENZO_MEDIA_IMAGE_MODEL", img.model);
+  const sp = lane("speech", "local");
+  set("OPENZO_MEDIA_SPEECH_PROVIDER", sp.provider);
+  set("OPENZO_MEDIA_SPEECH_BASE_URL", sp.baseUrl);
+  set("OPENZO_MEDIA_SPEECH_API_KEY", sp.apiKey);
+  set("OPENZO_MEDIA_SPEECH_MODEL", sp.model);
+  set("OPENZO_MEDIA_SPEECH_VOICE", s.media.speech.voice);
+  const tr = lane("transcription", "local");
+  set("OPENZO_MEDIA_TRANSCRIBE_PROVIDER", tr.provider);
+  set("OPENZO_MEDIA_TRANSCRIBE_BASE_URL", tr.baseUrl);
+  set("OPENZO_MEDIA_TRANSCRIBE_API_KEY", tr.apiKey);
+  set("OPENZO_MEDIA_TRANSCRIBE_MODEL", tr.model);
+  const v = s.media.video;
+  set("OPENZO_MEDIA_VIDEO_PROVIDER", v.provider ?? "none");
+  set("OPENZO_MEDIA_VIDEO_API_KEY", v.apiKey);
+  set("OPENZO_MEDIA_VIDEO_MODEL", v.model);
+  // Where this host keeps local backends (process driver; the image bakes its own).
+  if (!opts.containerized) {
+    for (const k of ["OPENZO_PIPER_VOICES", "OPENZO_WHISPER_PYTHON"]) set(k, process.env[k]);
+  }
   return out;
 }

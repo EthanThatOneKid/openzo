@@ -22,6 +22,11 @@ step "deploy scripts shellcheck" shellcheck -S warning deploy/*.sh tools/*.sh
 step "no Zo CDN or Zo API references in the shipped UI" bash -c "! grep -rlE 'static\\.z\\.computer|api\\.zo\\.computer' web/dist web/src host agent"
 step "e2e (process driver)" bun tools/e2e.ts ${1:-}
 step "e2e (gvisor driver, fake docker)" bun tools/e2e.ts --gvisor-fake
+step "e2e platform: sites, channels, API, personas, skills (process)" bun tools/e2e-platform.ts
+step "e2e platform (gvisor driver, fake docker)" bun tools/e2e-platform.ts --gvisor-fake
+step "e2e browser" bun tools/e2e-browser.ts
+step "e2e integrations (mock OAuth provider)" bun tools/e2e-integrations.ts
+step "e2e media (mock providers + local lanes)" bun tools/e2e-media.ts --offline
 
 echo
 echo "$pass passed, $fail failed"

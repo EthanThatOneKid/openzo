@@ -1,6 +1,16 @@
 # Caddy terminates TLS (automatic Let's Encrypt) and proxies to the host.
 # flush_interval -1 keeps the agent's NDJSON stream unbuffered; websockets
-# (the terminal) pass through reverse_proxy natively.
+# (the terminal, site websockets) pass through reverse_proxy natively.
+#
+# Sites: custom domains users attach and <site>-<user>.$OPENZO_SITES_DOMAIN
+# get certificates on demand — Caddy asks openzo first, and openzo only says
+# yes for hostnames it actually serves.
+{
+	on_demand_tls {
+		ask http://127.0.0.1:{$OPENZO_PORT:8080}/api/sites/tls-ask
+	}
+}
+
 {$OPENZO_DOMAIN} {
 	encode zstd gzip {
 		match {
@@ -12,5 +22,14 @@
 		transport http {
 			read_timeout 0
 		}
+	}
+}
+
+https:// {
+	tls {
+		on_demand
+	}
+	reverse_proxy 127.0.0.1:{$OPENZO_PORT:8080} {
+		flush_interval -1
 	}
 }

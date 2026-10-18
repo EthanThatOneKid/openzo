@@ -14,7 +14,14 @@ const TerminalPage = lazy(() => import("@/pages/terminal"));
 const AutomationsPage = lazy(() => import("@/pages/automations"));
 const SettingsPage = lazy(() => import("@/pages/settings"));
 const AdminPage = lazy(() => import("@/pages/admin"));
+const BrowserPage = lazy(() => import("@/pages/browser"));
+const IntegrationsPage = lazy(() => import("@/pages/integrations"));
 const StubPage = lazy(() => import("@/pages/stub"));
+const SitesPage = lazy(() => import("@/pages/sites"));
+const SkillsPage = lazy(() => import("@/pages/skills"));
+const PersonasPage = lazy(() => import("@/pages/settings-personas"));
+const ChannelsPage = lazy(() => import("@/pages/settings-channels"));
+const TokensPage = lazy(() => import("@/pages/settings-tokens"));
 
 const Spinner = () => (
   <div className="flex h-full items-center justify-center text-muted-foreground">
@@ -35,8 +42,16 @@ function Gate() {
         <Route path="/files/*" element={<FilesPage />} />
         <Route path="/terminal" element={<TerminalPage />} />
         <Route path="/automations" element={<AutomationsPage />} />
+        <Route path="/browser" element={<BrowserPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/settings/personas" element={<PersonasPage />} />
+        <Route path="/settings/channels" element={<ChannelsPage />} />
+        <Route path="/settings/tokens" element={<TokensPage />} />
+        <Route path="/sites" element={<SitesPage />} />
+        <Route path="/space" element={<Navigate to="/sites" replace />} />
+        <Route path="/skills" element={<SkillsPage />} />
         <Route path="/admin" element={boot.user.role === "admin" ? <AdminPage /> : <Navigate to="/" replace />} />
+        <Route path="/integrations" element={<IntegrationsPage />} />
         <Route path="/unavailable/:feature" element={<StubPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

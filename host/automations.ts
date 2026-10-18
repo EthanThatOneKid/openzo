@@ -1,8 +1,15 @@
 // Automations: a cron line + a prompt. The host's minute ticker starts a fresh
 // conversation in the owner's runtime when the expression matches, then
 // follows the turn to record ok / failed.
-import { continuationFrom, readEvents, startConversation } from "./agent-client";
+import { continuationFrom, finalText, readEvents, startConversation } from "./agent-client";
 import { audit, db, now, users } from "./db";
+import { notify, type ChannelId } from "./channels";
+
+// Where results go besides the conversation list: "" (nowhere), "auto" (the
+// user's preferred channel) or a channel id.
+try {
+  db.exec("ALTER TABLE automations ADD COLUMN deliver TEXT NOT NULL DEFAULT ''");
+} catch {}
 
 export interface Automation {
   id: number;
@@ -15,6 +22,7 @@ export interface Automation {
   last_run: number | null;
   last_status: string | null;
   last_conversation: string | null;
+  deliver: string;
   created: number;
 }
 
@@ -103,6 +111,12 @@ export async function runAutomation(a: Automation) {
     const cont = continuationFrom(events);
     if (cont) db.query("UPDATE conversations SET continuation = ? WHERE id = ?").run(cont, sessionId);
     db.query("UPDATE automations SET last_status = ? WHERE id = ?").run(failed ? "failed" : "ok", a.id);
+    if (a.deliver) {
+      const text = finalText(events) || (failed ? "The run failed — open the conversation in openzo." : "Done (no text output).");
+      await notify(user, { title: `Automation: ${a.name}`, text }, a.deliver as ChannelId | "auto").catch((e) => {
+        db.query("UPDATE automations SET last_status = ? WHERE id = ?").run(`${failed ? "failed" : "ok"}; delivery failed: ${String(e?.message ?? e).slice(0, 150)}`, a.id);
+      });
+    }
     audit(user.id, "automation.run", { id: a.id, sessionId, failed });
   } catch (e) {
     db.query("UPDATE automations SET last_status = ? WHERE id = ?").run(`error: ${String(e).slice(0, 200)}`, a.id);

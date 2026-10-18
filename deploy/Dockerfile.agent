@@ -10,22 +10,43 @@ RUN apt-get update \
       bash ca-certificates curl wget git openssh-client jq ripgrep fd-find less nano vim-tiny \
       procps psmisc htop tree file unzip zip xz-utils tar \
       python3 python3-pip python3-venv build-essential sqlite3 \
+      ffmpeg espeak-ng \
  && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
+ && rm -rf /var/lib/apt/lists/*
+
+# Chromium for openzo's per-user browser (runtime-bin/openzo-browser.mjs,
+# started by the host with `docker exec` on first use).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends chromium fonts-liberation fonts-noto-color-emoji \
  && rm -rf /var/lib/apt/lists/*
 
 # Bun is handy for the agent's own scripts.
 RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash \
  && bun --version
 
+# Local media lanes (agent/lib/media.ts): piper TTS with one English voice.
+# faster-whisper (local transcription) adds ~300 MB; opt in with
+#   --build-arg WITH_WHISPER=1
+ARG WITH_WHISPER=0
+RUN pip3 install --no-cache-dir --break-system-packages piper-tts \
+ && mkdir -p /opt/piper-voices \
+ && base="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium" \
+ && curl -fsSL -o "/opt/piper-voices/en_US-lessac-medium.onnx" "$base/en_US-lessac-medium.onnx" \
+ && curl -fsSL -o "/opt/piper-voices/en_US-lessac-medium.onnx.json" "$base/en_US-lessac-medium.onnx.json" \
+ && if [ "$WITH_WHISPER" = "1" ]; then pip3 install --no-cache-dir --break-system-packages faster-whisper; fi
+
 COPY .output /app
+COPY runtime-bin /app-bin
 
 ENV NODE_ENV=production \
     PORT=3000 \
     HOST=0.0.0.0 \
     NITRO_HOST=0.0.0.0 \
     OPENZO_WORKSPACE=/workspace \
+    OPENZO_PIPER_VOICES=/opt/piper-voices \
     HOME=/workspace \
-    PIP_BREAK_SYSTEM_PACKAGES=1
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    OPENZO_CHROMIUM=/usr/bin/chromium
 
 # /workspace = the user's files, /state = eve's durable session store (cwd).
 VOLUME ["/workspace", "/state"]

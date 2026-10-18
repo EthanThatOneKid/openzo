@@ -4,6 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { RotateCcw } from "lucide-react";
 import { useSession } from "@/lib/session";
+import { authUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
 export default function TerminalPage() {
@@ -32,7 +33,7 @@ export default function TerminalPage() {
     setStatus("connecting");
 
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${proto}://${location.host}/api/terminal`);
+    const ws = new WebSocket(`${proto}://${location.host}${authUrl("/api/terminal")}`);
     ws.binaryType = "arraybuffer";
     const sendSize = () => {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));

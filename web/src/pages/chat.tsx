@@ -24,7 +24,7 @@ import {
   Eye,
 } from "lucide-react";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { api, authHeaders, authUrl } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { Logo } from "@/components/logo";
 import { cn } from "@/lib/utils";
@@ -56,6 +56,29 @@ function summarizeInput(name: string, input: unknown): string {
   const pick = i.command ?? i.path ?? i.file_path ?? i.pattern ?? i.query ?? i.url ?? i.message ?? i.description;
   if (typeof pick === "string") return pick.length > 140 ? `${pick.slice(0, 137)}…` : pick;
   return name === "todo" ? "updated the task list" : JSON.stringify(i).slice(0, 140);
+}
+
+// Workspace media a tool produced (generate_image, generate_speech…), previewed inline.
+const MEDIA_PATH = /\/workspace\/[^\s"'`,;<>]+?\.(png|jpe?g|webp|gif|mp3|wav|ogg|m4a|flac|mp4|webm|mov)(?=$|[\s"'`,;<>])/gi;
+
+function MediaPreview({ text }: { text: string }) {
+  const paths = [...new Set([...text.matchAll(MEDIA_PATH)].map((m) => m[0]))].slice(0, 6);
+  if (!paths.length) return null;
+  return (
+    <div className="flex flex-wrap gap-2 border-t px-3 py-2">
+      {paths.map((p) => {
+        const src = authUrl(`/api/files/raw?path=${encodeURIComponent(p.slice("/workspace".length))}`);
+        const ext = p.split(".").pop()!.toLowerCase();
+        if (["mp3", "wav", "ogg", "m4a", "flac"].includes(ext)) return <audio key={p} controls src={src} className="h-9 max-w-full" title={p} />;
+        if (["mp4", "webm", "mov"].includes(ext)) return <video key={p} controls src={src} className="max-h-72 max-w-full rounded-md border" title={p} />;
+        return (
+          <a key={p} href={src} target="_blank" rel="noreferrer" title={p}>
+            <img src={src} alt={p} className="max-h-72 max-w-full rounded-md border" loading="lazy" />
+          </a>
+        );
+      })}
+    </div>
+  );
 }
 
 function outputText(output: unknown): string {
@@ -126,6 +149,7 @@ function ToolCard({ part, onRespond }: { part: ToolPart; onRespond: (requestId: 
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">{summarizeInput(part.toolName, part.input)}</span>
         <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
       </button>
+      {part.state === "output-available" && out && <MediaPreview text={out} />}
       {open && (
         <div className="border-t bg-muted/40 px-3 py-2">
           <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Input</div>
@@ -241,6 +265,7 @@ interface ChatViewProps {
 function ChatView({ conversationId, initialSession, initialEvents }: ChatViewProps) {
   const { refreshConversations } = useSession();
   const agent = useEveAgent({
+    headers: () => authHeaders(),
     initialSession,
     initialEvents: initialEvents as never,
   });
@@ -321,7 +346,7 @@ function ChatView({ conversationId, initialSession, initialEvents }: ChatViewPro
     if (!sessionId) return agent.stop();
     await fetch(`/eve/v1/session/${encodeURIComponent(sessionId)}/cancel`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...authHeaders() },
       body: JSON.stringify(turnId ? { turnId } : {}),
     }).catch(() => {});
   };

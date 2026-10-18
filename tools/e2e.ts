@@ -108,6 +108,15 @@ try {
   check("invite is single-use", (await new Client().req("POST", "/api/signup", { name: "mallory", password: "correct-horse-5", invite: inv.json.code })).status === 403);
   check("non-admin refused from admin API", (await alice.req("GET", "/api/admin/overview")).status === 403);
 
+  // Session carriers that survive auth proxies which strip cookies.
+  const tokLogin = await new Client().req("POST", "/api/login", { name: "alice", password: "correct-horse-4" });
+  check("login returns a session token", typeof tokLogin.json?.token === "string");
+  const viaHeader = await fetch(`${BASE}/api/me`, { headers: { "x-openzo-session": tokLogin.json.token } });
+  check("X-Openzo-Session header authenticates", viaHeader.status === 200);
+  const viaQuery = await fetch(`${BASE}/api/me?oz_token=${encodeURIComponent(tokLogin.json.token)}`);
+  check("oz_token query authenticates", viaQuery.status === 200);
+  check("garbage header token refused", (await fetch(`${BASE}/api/me`, { headers: { "x-openzo-session": "nope" } })).status === 401);
+
   const badLogin = await new Client().req("POST", "/api/login", { name: "alice", password: "wrong" });
   check("wrong password refused", badLogin.status === 401);
 

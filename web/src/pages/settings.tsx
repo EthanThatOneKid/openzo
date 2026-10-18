@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Loader2, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { api, ago } from "@/lib/api";
+import { api, ago, authFetch } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { PageHeader } from "@/components/shell";
+import { SettingsTabs } from "@/components/settings-tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,9 +26,126 @@ interface Preset {
 interface Settings {
   model: { preset: string; baseUrl?: string; apiKey?: string; model?: string; fastModel?: string; visionModel?: string; contextWindow?: number };
   search: { searxngUrl: string; braveKey: string; tavilyKey: string; exaKey: string };
+  media?: Media;
   persona: string;
   rules: string;
   secrets: { name: string; value: string }[];
+}
+
+interface MediaLane {
+  provider?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  voice?: string;
+}
+interface Media {
+  image: MediaLane;
+  speech: MediaLane;
+  transcription: MediaLane;
+  video: MediaLane;
+}
+
+const MEDIA_LANES: { key: keyof Media; title: string; description: string; options: { id: string; label: string }[]; modelHint: string; voice?: boolean }[] = [
+  {
+    key: "image",
+    title: "Images",
+    description: "generate_image and edit_image. Auto uses your OpenAI key when the model preset is OpenAI, else the keyless Pollinations lane (generate only).",
+    options: [
+      { id: "auto", label: "Auto" },
+      { id: "openai-compatible", label: "OpenAI-compatible" },
+      { id: "pollinations", label: "Pollinations (free)" },
+    ],
+    modelHint: "gpt-image-1 on OpenAI; flux on Pollinations.",
+  },
+  {
+    key: "speech",
+    title: "Speech",
+    description: "generate_speech. Auto uses your OpenAI key when the model preset is OpenAI, else local piper (needs a voice model) and then espeak-ng.",
+    options: [
+      { id: "auto", label: "Auto" },
+      { id: "openai-compatible", label: "OpenAI-compatible" },
+      { id: "piper", label: "piper (local)" },
+      { id: "espeak", label: "espeak-ng (local)" },
+    ],
+    modelHint: "gpt-4o-mini-tts or tts-1 on OpenAI.",
+    voice: true,
+  },
+  {
+    key: "transcription",
+    title: "Transcription",
+    description: "transcribe_audio and transcribe_video. Auto uses your OpenAI or Groq key when that is the model preset, else local faster-whisper.",
+    options: [
+      { id: "auto", label: "Auto" },
+      { id: "openai-compatible", label: "OpenAI-compatible" },
+      { id: "local", label: "faster-whisper (local)" },
+    ],
+    modelHint: "whisper-1 (OpenAI), whisper-large-v3 (Groq), or a faster-whisper size: base, small…",
+  },
+  {
+    key: "video",
+    title: "Video",
+    description: "generate_video. There is no free lane — pick a provider and paste its key.",
+    options: [
+      { id: "none", label: "Off" },
+      { id: "fal", label: "fal.ai" },
+      { id: "replicate", label: "Replicate" },
+    ],
+    modelHint: "Defaults: fal-ai/ltx-video, minimax/video-01.",
+  },
+];
+
+function MediaPanel({ media, onChange }: { media: Media; onChange: (m: Media) => void }) {
+  return (
+    <>
+      {MEDIA_LANES.map((lane) => {
+        const v = media[lane.key] ?? {};
+        const provider = v.provider ?? lane.options[0]!.id;
+        const set = (patch: Partial<MediaLane>) => onChange({ ...media, [lane.key]: { ...v, ...patch } });
+        const remote = provider === "openai-compatible" || provider === "auto";
+        const keyed = remote || provider === "fal" || provider === "replicate";
+        return (
+          <Section key={lane.key} title={lane.title} description={lane.description}>
+            <div className="flex flex-wrap gap-2">
+              {lane.options.map((o) => (
+                <button
+                  key={o.id}
+                  onClick={() => set({ provider: o.id })}
+                  className={cn("rounded-lg border px-3 py-1.5 text-sm transition-colors hover:bg-accent", provider === o.id && "border-primary ring-1 ring-primary")}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            {keyed && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {remote && lane.key !== "video" && (
+                  <Field label="Base URL" hint="Default: https://api.openai.com/v1">
+                    <Input value={v.baseUrl ?? ""} onChange={(e) => set({ baseUrl: e.target.value })} placeholder="https://api.openai.com/v1" />
+                  </Field>
+                )}
+                <Field label="API key" hint={provider === "auto" ? "Optional: set one to use it instead of the model preset's key." : undefined}>
+                  <Input type="password" value={v.apiKey ?? ""} onChange={(e) => set({ apiKey: e.target.value })} placeholder="sk-…" autoComplete="off" />
+                </Field>
+              </div>
+            )}
+            {provider !== "none" && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Model" hint={lane.modelHint}>
+                  <Input value={v.model ?? ""} onChange={(e) => set({ model: e.target.value })} placeholder="default" />
+                </Field>
+                {lane.voice && (
+                  <Field label="Voice" hint="An API voice (alloy, nova…) or a piper voice name.">
+                    <Input value={v.voice ?? ""} onChange={(e) => set({ voice: e.target.value })} placeholder="default" />
+                  </Field>
+                )}
+              </div>
+            )}
+          </Section>
+        );
+      })}
+    </>
+  );
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -68,7 +187,7 @@ function RuntimePanel() {
       setBusy(false);
     }
   };
-  const showLog = async () => setLog(await fetch("/api/runtime/log").then((r) => r.text()));
+  const showLog = async () => setLog(await authFetch("/api/runtime/log").then((r) => r.text()));
   return (
     <Section title="Your runtime" description="The agent server that runs your conversations. It starts on demand and sleeps when idle.">
       {rt && (
@@ -178,12 +297,14 @@ export default function SettingsPage() {
       <PageHeader title="Settings" description="Your model, tools, instructions and account. Only you can see these.">
         {saveBar}
       </PageHeader>
+      <SettingsTabs />
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
         <Tabs defaultValue="model" className="mx-auto max-w-3xl">
           <TabsList className="mb-4 flex-wrap">
             <TabsTrigger value="model">Model</TabsTrigger>
             <TabsTrigger value="search">Web search</TabsTrigger>
-            <TabsTrigger value="persona">Persona & rules</TabsTrigger>
+            <TabsTrigger value="media">Media</TabsTrigger>
+            <TabsTrigger value="persona">Quick instructions</TabsTrigger>
             <TabsTrigger value="secrets">Secrets</TabsTrigger>
             <TabsTrigger value="account">Account & runtime</TabsTrigger>
           </TabsList>
@@ -252,7 +373,18 @@ export default function SettingsPage() {
             </Section>
           </TabsContent>
 
+          <TabsContent value="media" className="flex flex-col gap-4">
+            <MediaPanel media={s.media ?? { image: {}, speech: {}, transcription: {}, video: {} }} onChange={(media) => setS({ ...s, media })} />
+          </TabsContent>
+
           <TabsContent value="persona" className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              For several personas and conditional rules, use{" "}
+              <Link to="/settings/personas" className="text-primary underline underline-offset-2">
+                Personas &amp; rules
+              </Link>
+              . Text here is added to every conversation as well.
+            </p>
             <Section title="Persona" description="Who your agent is: name, tone, how it talks to you. Added to every conversation.">
               <Textarea rows={6} value={s.persona} onChange={(e) => setS({ ...s, persona: e.target.value })} placeholder="You are Juno, my research partner. Be blunt and brief." />
             </Section>

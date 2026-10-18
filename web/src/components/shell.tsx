@@ -2,10 +2,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Bot,
-  ChevronDown,
   Clock,
   FolderOpen,
-  Globe,
   LogOut,
   Menu,
   MessageSquare,
@@ -18,12 +16,11 @@ import {
   Sun,
   Terminal,
   Trash2,
-  Image,
-  Radio,
   AppWindow,
+  Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { api, ago } from "@/lib/api";
+import { api, ago, session } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { useTheme } from "@/components/theme-provider";
 import { Logo } from "@/components/logo";
@@ -32,18 +29,13 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 
 const NAV = [
   { to: "/", label: "Home", icon: MessageSquare, end: true },
+  { to: "/sites", label: "Space & sites", icon: Sparkles },
   { to: "/files", label: "Files", icon: FolderOpen },
-  { to: "/terminal", label: "Terminal", icon: Terminal },
   { to: "/automations", label: "Automations", icon: Clock },
-];
-
-const UNAVAILABLE = [
-  { id: "space", label: "Zo Space", icon: Sparkles },
-  { id: "sites", label: "Websites", icon: Globe },
-  { id: "integrations", label: "Integrations", icon: Plug },
-  { id: "channels", label: "SMS & channels", icon: Radio },
-  { id: "media", label: "Media generation", icon: Image },
-  { id: "browser", label: "Browser", icon: AppWindow },
+  { to: "/integrations", label: "Integrations", icon: Plug },
+  { to: "/skills", label: "Skills", icon: Wand2 },
+  { to: "/browser", label: "Browser", icon: AppWindow },
+  { to: "/terminal", label: "Terminal", icon: Terminal },
 ];
 
 function RuntimeDot() {
@@ -75,12 +67,12 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  const [showStubs, setShowStubs] = useState(false);
   const user = boot!.user!;
   const dark = theme === "dark" || (theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
 
   const logout = async () => {
-    await api("/api/logout", { method: "POST" });
+    await api("/api/logout", { method: "POST" }).catch(() => {});
+    session.set(null);
     await reload();
   };
 
@@ -146,25 +138,10 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
         ))}
       </div>
 
-      <div className="border-t border-sidebar-border px-2.5 pt-2">
-        <button onClick={() => setShowStubs((s) => !s)} className="flex w-full items-center justify-between px-2 py-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground">
-          Not in openzo
-          <ChevronDown className={cn("size-3.5 transition-transform", showStubs && "rotate-180")} />
-        </button>
-        {showStubs && (
-          <div className="flex flex-col gap-0.5 pb-1">
-            {UNAVAILABLE.map((u) => (
-              <NavLink key={u.id} to={`/unavailable/${u.id}`} onClick={onNavigate} className={({ isActive }) => cn(item, "text-muted-foreground", isActive && "bg-sidebar-accent")}>
-                <u.icon className="size-4 opacity-50" />
-                {u.label}
-              </NavLink>
-            ))}
-          </div>
-        )}
-      </div>
+<div className="border-t border-sidebar-border" />
 
       <div className="flex flex-col gap-0.5 px-2.5 py-2">
-        <NavLink to="/settings" onClick={onNavigate} className={({ isActive }) => cn(item, isActive && "bg-sidebar-accent font-medium")}>
+        <NavLink to="/settings" end={false} onClick={onNavigate} className={({ isActive }) => cn(item, isActive && "bg-sidebar-accent font-medium")}>
           <Settings className="size-4 opacity-70" /> Settings
         </NavLink>
         {user.role === "admin" && (

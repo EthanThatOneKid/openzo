@@ -39,6 +39,6 @@
     "@types/node": "^20",
     "typescript": "6.0.3"
   },
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Self-hosted Zo: eve agent + Zo stdlib + multi-user host with gVisor isolation"
 }

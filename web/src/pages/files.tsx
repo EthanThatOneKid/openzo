@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, Download, File, FilePlus, Folder, FolderPlus, Loader2, Pencil, RefreshCw, Save, Trash2, Upload, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
-import { api, ago, formatBytes } from "@/lib/api";
+import { api, ago, authFetch, authUrl, formatBytes } from "@/lib/api";
 import { PageHeader } from "@/components/shell";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -32,7 +32,7 @@ function Editor({ path, onClose }: { path: string; onClose: () => void }) {
 
   useEffect(() => {
     if (image || !isText(name)) return;
-    fetch(raw)
+    authFetch(raw)
       .then((r) => r.text())
       .then((t) => {
         setText(t);
@@ -43,7 +43,7 @@ function Editor({ path, onClose }: { path: string; onClose: () => void }) {
   const save = async () => {
     setSaving(true);
     try {
-      await fetch(raw, { method: "PUT", body: text ?? "" }).then((r) => {
+      await authFetch(raw, { method: "PUT", body: text ?? "" }).then((r) => {
         if (!r.ok) throw new Error(`save failed (${r.status})`);
       });
       setOrig(text ?? "");
@@ -66,7 +66,7 @@ function Editor({ path, onClose }: { path: string; onClose: () => void }) {
           {text !== null && text !== orig && <span className="text-xs text-amber-600">● unsaved</span>}
         </div>
         <div className="flex items-center gap-2">
-          <a href={`${raw}&download=1`} className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm hover:bg-accent">
+          <a href={authUrl(`${raw}&download=1`)} className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm hover:bg-accent">
             <Download className="size-3.5" /> Download
           </a>
           {text !== null && (
@@ -78,7 +78,7 @@ function Editor({ path, onClose }: { path: string; onClose: () => void }) {
       </div>
       {image ? (
         <div className="flex flex-1 items-center justify-center overflow-auto bg-muted/30 p-6">
-          <img src={raw} alt={name} className="max-h-full max-w-full rounded-lg border shadow-sm" />
+          <img src={authUrl(raw)} alt={name} className="max-h-full max-w-full rounded-lg border shadow-sm" />
         </div>
       ) : text !== null ? (
         <textarea
@@ -100,7 +100,7 @@ function Editor({ path, onClose }: { path: string; onClose: () => void }) {
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
           <File className="size-8" /> No preview for this file type.
-          <a href={`${raw}&download=1`} className="underline">
+          <a href={authUrl(`${raw}&download=1`)} className="underline">
             Download it
           </a>
         </div>
@@ -165,7 +165,7 @@ export default function FilesPage() {
   const newFile = async () => {
     const name = prompt("New file name", "notes.md");
     if (!name) return;
-    await fetch(`/api/files/raw?path=${encodeURIComponent(join(name))}`, { method: "PUT", body: "" });
+    await authFetch(`/api/files/raw?path=${encodeURIComponent(join(name))}`, { method: "PUT", body: "" });
     navigate(`${location.pathname}?open=${encodeURIComponent(join(name))}`);
   };
 
@@ -260,7 +260,7 @@ export default function FilesPage() {
                 <span className="hidden w-24 text-right text-xs text-muted-foreground sm:block">{ago(e.mtime)}</span>
                 <div className="flex w-24 justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                   {e.type !== "dir" && (
-                    <a href={`/api/files/raw?path=${encodeURIComponent(e.path)}&download=1`} className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground" title="Download">
+                    <a href={authUrl(`/api/files/raw?path=${encodeURIComponent(e.path)}&download=1`)} className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground" title="Download">
                       <Download className="size-3.5" />
                     </a>
                   )}

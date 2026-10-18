@@ -160,19 +160,29 @@ function scripted(
 }
 
 const MOCK_BASH = /\[mock:bash\s+([\s\S]+?)\]/;
+// `[mock:tool <name> <json input>]` calls any tool once — how the e2e suites
+// exercise host-backed tools without a real model.
+const MOCK_TOOL = /\[mock:tool\s+([a-z_][a-z0-9_]*)\s+(\{[\s\S]*\})\]/;
 
 function mockModel(): LanguageModelV4 {
   const story = createMockStoryModel({ chunkDelayMs: 0 });
-  const bash = scripted("openzo-mock", (prompt) => {
+  const scriptedTool = scripted("openzo-mock", (prompt) => {
     const result = lastToolResult(prompt);
     if (result !== null) return { text: `Command finished. Result: ${result}` };
-    const cmd = MOCK_BASH.exec(lastUserText(prompt))![1]!;
+    const text = lastUserText(prompt);
+    const tool = MOCK_TOOL.exec(text);
+    if (tool) return { toolCall: { name: tool[1]!, input: JSON.parse(tool[2]!) } };
+    const cmd = MOCK_BASH.exec(text)![1]!;
     return { toolCall: { name: "bash", input: { command: cmd } } };
   });
+  const wantsTool = (o: { prompt: unknown }) => {
+    const t = lastUserText(o.prompt as never);
+    return MOCK_BASH.test(t) || MOCK_TOOL.test(t);
+  };
   return {
     ...story,
     doGenerate: (o) => story.doGenerate(o),
-    doStream: (o) => (MOCK_BASH.test(lastUserText(o.prompt)) ? bash.doStream(o) : story.doStream(o)),
+    doStream: (o) => (wantsTool(o) ? scriptedTool.doStream(o) : story.doStream(o)),
   };
 }
 

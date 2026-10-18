@@ -8,11 +8,35 @@ export class ApiError extends Error {
   }
 }
 
+// The session token, kept client-side so it survives auth proxies that strip
+// our cookie (see host/auth.ts). The cookie still works where it's allowed.
+const TOKEN_KEY = "openzo-session";
+export const session = {
+  get: () => localStorage.getItem(TOKEN_KEY),
+  set: (t: string | undefined | null) => (t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY)),
+};
+
+export function authHeaders(): Record<string, string> {
+  const t = session.get();
+  return t ? { "x-openzo-session": t } : {};
+}
+
+// For places that can't send headers: websockets, <a href>, <img src>.
+export function authUrl(path: string): string {
+  const t = session.get();
+  if (!t) return path;
+  return `${path}${path.includes("?") ? "&" : "?"}oz_token=${encodeURIComponent(t)}`;
+}
+
+export async function authFetch(path: string, init: RequestInit = {}) {
+  return fetch(path, { ...init, headers: { ...authHeaders(), ...(init.headers as Record<string, string>) } });
+}
+
 export async function api<T = any>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   const { json, ...rest } = init;
   const res = await fetch(path, {
     ...rest,
-    headers: { accept: "application/json", ...(json !== undefined ? { "content-type": "application/json" } : {}), ...rest.headers },
+    headers: { accept: "application/json", ...authHeaders(), ...(json !== undefined ? { "content-type": "application/json" } : {}), ...rest.headers },
     body: json !== undefined ? JSON.stringify(json) : rest.body,
   });
   const text = await res.text();
@@ -22,6 +46,8 @@ export async function api<T = any>(path: string, init: RequestInit & { json?: un
   } catch {
     data = text;
   }
+  if (data && typeof data === "object" && typeof data.token === "string") session.set(data.token);
+  if (res.status === 401 && session.get() && !path.startsWith("/api/login")) session.set(null);
   if (!res.ok) throw new ApiError(res.status, (data && data.error) || `${res.status} ${res.statusText}`);
   return data as T;
 }
